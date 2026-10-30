@@ -1,48 +1,563 @@
-import { ScrollView, Text, View, TouchableOpacity } from "react-native";
-
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Ionicons } from "@expo/vector-icons";
+import { useEffect, useMemo, useState } from "react";
+import {
+  Image,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
+import {
+  BLOCKMATE_MODES,
+  SAFETY_RULES,
+  getMode,
+  type AutomationModeId,
+  type RunState,
+} from "@/lib/blockmate";
 
-/**
- * Home Screen - NativeWind Example
- *
- * This template uses NativeWind (Tailwind CSS for React Native).
- * You can use familiar Tailwind classes directly in className props.
- *
- * Key patterns:
- * - Use `className` instead of `style` for most styling
- * - Theme colors: use tokens directly (bg-background, text-foreground, bg-primary, etc.); no dark: prefix needed
- * - Responsive: standard Tailwind breakpoints work on web
- * - Custom colors defined in tailwind.config.js
- */
-export default function HomeScreen() {
+const COLORS = {
+  background: "#101713",
+  panel: "#17221D",
+  panelRaised: "#1E2C25",
+  panelSoft: "#22332A",
+  line: "#2C4034",
+  text: "#F4F2E9",
+  muted: "#9AA99E",
+  moss: "#A7D46F",
+  sand: "#E6C88E",
+  coral: "#F07862",
+  blue: "#8FB3C8",
+  white: "#FFFFFF",
+};
+
+const LOGO = require("../../assets/images/icon.png");
+
+function Icon({ name, color = COLORS.text, size = 20 }: { name: string; color?: string; size?: number }) {
+  return <Ionicons name={name as never} color={color} size={size} />;
+}
+
+function StatePill({ state }: { state: RunState }) {
+  const config: Record<RunState, { label: string; color: string; icon: string }> = {
+    idle: { label: "Needs calibration", color: COLORS.sand, icon: "ellipse-outline" },
+    calibrated: { label: "Calibrated", color: COLORS.moss, icon: "checkmark-circle-outline" },
+    running: { label: "Running", color: COLORS.moss, icon: "radio-button-on-outline" },
+    paused: { label: "Paused", color: COLORS.sand, icon: "pause-circle-outline" },
+    stopped: { label: "Stopped safely", color: COLORS.blue, icon: "stop-circle-outline" },
+    safety_stop: { label: "Safety stop", color: COLORS.coral, icon: "warning-outline" },
+  };
+  const item = config[state];
   return (
-    <ScreenContainer className="p-6">
-      <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
-        <View className="flex-1 gap-8">
-          {/* Hero Section */}
-          <View className="items-center gap-2">
-            <Text className="text-4xl font-bold text-foreground">Welcome</Text>
-            <Text className="text-base text-muted text-center">
-              Edit app/(tabs)/index.tsx to get started
-            </Text>
-          </View>
+    <View style={[styles.statePill, { borderColor: `${item.color}55`, backgroundColor: `${item.color}14` }]}>
+      <Icon name={item.icon} color={item.color} size={15} />
+      <Text style={[styles.statePillText, { color: item.color }]}>{item.label}</Text>
+    </View>
+  );
+}
 
-          {/* Example Card */}
-          <View className="w-full max-w-sm self-center bg-surface rounded-2xl p-6 shadow-sm border border-border">
-            <Text className="text-lg font-semibold text-foreground mb-2">NativeWind Ready</Text>
-            <Text className="text-sm text-muted leading-relaxed">
-              Use Tailwind CSS classes directly in your React Native components.
-            </Text>
-          </View>
+function SectionLabel({ children, right }: { children: string; right?: string }) {
+  return (
+    <View style={styles.sectionLabelRow}>
+      <Text style={styles.sectionLabel}>{children}</Text>
+      {right ? <Text style={styles.sectionLabelRight}>{right}</Text> : null}
+    </View>
+  );
+}
 
-          {/* Example Button */}
-          <View className="items-center">
-            <TouchableOpacity className="bg-primary px-6 py-3 rounded-full active:opacity-80">
-              <Text className="text-background font-semibold">Get Started</Text>
-            </TouchableOpacity>
+function ModeCard({ id, selected, onPress }: { id: AutomationModeId; selected: boolean; onPress: () => void }) {
+  const mode = getMode(id);
+  const active = mode.status === "active";
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${mode.label}, ${active ? "active" : "planned"}`}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.modeCard,
+        selected && styles.modeCardSelected,
+        { borderColor: selected ? mode.accent : COLORS.line, opacity: pressed ? 0.82 : 1 },
+      ]}
+    >
+      <View style={[styles.modeIcon, { backgroundColor: `${mode.accent}1C` }]}>
+        <Icon name={mode.icon} color={mode.accent} size={20} />
+      </View>
+      <Text style={[styles.modeCardLabel, selected && { color: COLORS.text }]}>{mode.shortLabel}</Text>
+      <View style={styles.modeCardStatus}>
+        <View style={[styles.statusDot, { backgroundColor: active ? COLORS.moss : COLORS.muted }]} />
+        <Text style={styles.modeCardStatusText}>{active ? "ACTIVE" : "PLANNED"}</Text>
+      </View>
+    </Pressable>
+  );
+}
+
+function SafetyChip({ label, value, detail, color }: { label: string; value: string; detail: string; color: string }) {
+  return (
+    <View style={styles.safetyChip}>
+      <View style={styles.safetyChipTop}>
+        <View style={[styles.safetyDot, { backgroundColor: color }]} />
+        <Text style={styles.safetyChipLabel}>{label}</Text>
+      </View>
+      <Text style={[styles.safetyChipValue, { color }]}>{value}</Text>
+      <Text style={styles.safetyChipDetail}>{detail}</Text>
+    </View>
+  );
+}
+
+function Sheet({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
+  return (
+    <Modal transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.modalBackdrop}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        <View style={styles.sheet}>{children}</View>
+      </View>
+    </Modal>
+  );
+}
+
+export default function HomeScreen() {
+  const [selectedMode, setSelectedMode] = useState<AutomationModeId>("farm");
+  const [runState, setRunState] = useState<RunState>("idle");
+  const [calibrated, setCalibrated] = useState(false);
+  const [introVisible, setIntroVisible] = useState(false);
+  const [calibrationVisible, setCalibrationVisible] = useState(false);
+  const [confirmVisible, setConfirmVisible] = useState(false);
+  const [calibrationStep, setCalibrationStep] = useState(1);
+  const [calibrationChecks, setCalibrationChecks] = useState([false, false, false]);
+  const [limits, setLimits] = useState<Record<AutomationModeId, number>>(
+    Object.fromEntries(BLOCKMATE_MODES.map((mode) => [mode.id, mode.defaultLimit])) as Record<AutomationModeId, number>,
+  );
+  const [actionCount, setActionCount] = useState(0);
+  const [toast, setToast] = useState("Ready when you are.");
+  const [phase, setPhase] = useState("Waiting for calibration");
+
+  const mode = useMemo(() => getMode(selectedMode), [selectedMode]);
+  const isRunning = runState === "running";
+  const isPaused = runState === "paused";
+  const isActiveMode = mode.status === "active";
+  const currentLimit = limits[selectedMode];
+  const progress = Math.min(100, Math.round((actionCount / Math.max(currentLimit, 1)) * 100));
+  const livePhases = ["Checking plot", "Harvesting row", "Replanting row", "Returning to anchor"];
+  const currentPhase = isRunning ? livePhases[actionCount % livePhases.length] : phase;
+
+  useEffect(() => {
+    void AsyncStorage.multiGet(["blockmate:intro-seen", "blockmate:calibrated"]).then((entries) => {
+      const introSeen = entries.find(([key]) => key === "blockmate:intro-seen")?.[1];
+      const savedCalibration = entries.find(([key]) => key === "blockmate:calibrated")?.[1];
+      if (savedCalibration === "true") {
+        setCalibrated(true);
+        setRunState("calibrated");
+        setPhase("Farm anchor ready");
+      }
+      if (introSeen !== "true") setIntroVisible(true);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!isRunning) return;
+    const timer = setInterval(() => setActionCount((value) => value + 1), 850);
+    return () => clearInterval(timer);
+  }, [isRunning]);
+
+  useEffect(() => {
+    if (!isRunning) return;
+    if (actionCount >= currentLimit) {
+      const timer = setTimeout(() => {
+        setRunState("stopped");
+        setToast("Run complete. Farming loop stopped safely.");
+        setPhase("Farm anchor ready");
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+  }, [actionCount, currentLimit, isRunning]);
+
+  function dismissIntro() {
+    setIntroVisible(false);
+    void AsyncStorage.setItem("blockmate:intro-seen", "true");
+  }
+
+  function beginCalibration() {
+    setCalibrationStep(1);
+    setCalibrationChecks([false, false, false]);
+    setCalibrationVisible(true);
+  }
+
+  function completeCalibration() {
+    setCalibrated(true);
+    setRunState("calibrated");
+    setPhase("Farm anchor ready");
+    setToast("Calibration saved. Safety checks are armed.");
+    setCalibrationVisible(false);
+    void AsyncStorage.setItem("blockmate:calibrated", "true");
+  }
+
+  function startRun() {
+    if (!isActiveMode) {
+      setToast(`${mode.shortLabel} is staged for a later build.`);
+      return;
+    }
+    if (!calibrated) {
+      setToast("Calibrate your Minecraft controls before starting.");
+      setCalibrationVisible(true);
+      return;
+    }
+    setConfirmVisible(true);
+  }
+
+  function confirmStart() {
+    setConfirmVisible(false);
+    setActionCount(0);
+    setPhase("Checking plot");
+    setToast("Prototype loop running. Keep Minecraft in the calibrated view.");
+    setRunState("running");
+  }
+
+  function pauseRun() {
+    setRunState("paused");
+    setToast("Automation paused. Your world is safe.");
+  }
+
+  function resumeRun() {
+    setRunState("running");
+    setToast("Automation resumed. Safety checks remain armed.");
+  }
+
+  function stopRun() {
+    setRunState(calibrated ? "stopped" : "idle");
+    setPhase(calibrated ? "Farm anchor ready" : "Waiting for calibration");
+    setToast("Emergency stop received. No more actions will be sent.");
+  }
+
+  function adjustLimit(delta: number) {
+    if (isRunning || isPaused) return;
+    const next = Math.min(mode.maxLimit, Math.max(mode.minLimit, currentLimit + delta));
+    setLimits((previous) => ({ ...previous, [selectedMode]: next }));
+  }
+
+  return (
+    <ScreenContainer containerClassName="bg-[#101713]" safeAreaClassName="bg-[#101713]" edges={["top", "left", "right", "bottom"]}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <View style={styles.header}>
+          <View style={styles.brandRow}>
+            <Image source={LOGO} style={styles.logo} />
+            <View>
+              <Text style={styles.wordmark}>BlockMate</Text>
+              <Text style={styles.eyebrow}>SURVIVAL CONSOLE</Text>
+            </View>
+          </View>
+          <View style={styles.headerRight}>
+            <View style={styles.previewTag}>
+              <View style={styles.previewDot} />
+              <Text style={styles.previewText}>{Platform.OS === "web" ? "PREVIEW" : "DEVICE"}</Text>
+            </View>
+            <Pressable accessibilityRole="button" accessibilityLabel="Open setup guide" onPress={() => setIntroVisible(true)} style={styles.headerButton}>
+              <Icon name="help-circle-outline" color={COLORS.muted} size={22} />
+            </Pressable>
           </View>
         </View>
+
+        <View style={styles.heroRow}>
+          <View style={styles.heroCopy}>
+            <Text style={styles.heroKicker}>UNMODIFIED BEDROCK</Text>
+            <Text style={styles.heroTitle}>Calibrate once.{"\n"}Run carefully.</Text>
+            <Text style={styles.heroBody}>A small safety console for repeatable work in your survival world.</Text>
+          </View>
+          <View style={styles.heroBadge}>
+            <Icon name="shield-checkmark-outline" color={COLORS.moss} size={28} />
+            <Text style={styles.heroBadgeText}>WORLD{"\n"}SAFE</Text>
+          </View>
+        </View>
+
+        <View style={styles.statusCard}>
+          <View style={styles.statusCardTop}>
+            <View>
+              <Text style={styles.cardEyebrow}>CURRENT RUN</Text>
+              <Text style={styles.statusTitle}>{isRunning ? "Farming loop" : mode.label}</Text>
+            </View>
+            <StatePill state={runState} />
+          </View>
+          <View style={styles.statusDivider} />
+          <View style={styles.statusTelemetry}>
+            <View style={styles.telemetryBlock}>
+              <Text style={styles.telemetryLabel}>PHASE</Text>
+              <Text style={styles.telemetryValue}>{currentPhase}</Text>
+            </View>
+            <View style={styles.telemetryBlockRight}>
+              <Text style={styles.telemetryLabel}>PROGRESS</Text>
+              <Text style={styles.telemetryValue}>{progress}%</Text>
+            </View>
+          </View>
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: `${progress}%` }]} />
+          </View>
+          <Text style={styles.toast}>{toast}</Text>
+        </View>
+
+        <SectionLabel right="5 MODES">AUTOMATION DECK</SectionLabel>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.modeRail}>
+          {BLOCKMATE_MODES.map((item) => (
+            <ModeCard key={item.id} id={item.id} selected={selectedMode === item.id} onPress={() => setSelectedMode(item.id)} />
+          ))}
+        </ScrollView>
+
+        <View style={[styles.modePanel, { borderColor: `${mode.accent}66` }]}>
+          <View style={styles.modePanelHeader}>
+            <View style={[styles.largeModeIcon, { backgroundColor: `${mode.accent}1A` }]}>
+              <Icon name={mode.icon} color={mode.accent} size={28} />
+            </View>
+            <View style={styles.modePanelTitleWrap}>
+              <View style={styles.titleLine}>
+                <Text style={styles.modePanelTitle}>{mode.label}</Text>
+                <View style={[styles.inlineStatus, { backgroundColor: mode.status === "active" ? `${COLORS.moss}1C` : `${COLORS.muted}18` }]}>
+                  <Text style={[styles.inlineStatusText, { color: mode.status === "active" ? COLORS.moss : COLORS.muted }]}>{mode.status === "active" ? "ACTIVE" : "PLANNED"}</Text>
+                </View>
+              </View>
+              <Text style={styles.modePanelBody}>{mode.description}</Text>
+            </View>
+          </View>
+
+          <View style={styles.settingRow}>
+            <View>
+              <Text style={styles.settingLabel}>{mode.limitLabel.toUpperCase()}</Text>
+              <Text style={styles.settingHint}>Safe default · adjust before a run</Text>
+            </View>
+            <View style={styles.stepper}>
+              <Pressable accessibilityRole="button" accessibilityLabel="Decrease limit" onPress={() => adjustLimit(-mode.step)} style={({ pressed }) => [styles.stepperButton, { opacity: pressed ? 0.6 : 1 }]}>
+                <Icon name="remove" color={COLORS.text} size={18} />
+              </Pressable>
+              <View style={styles.stepperValueWrap}>
+                <Text style={styles.stepperValue}>{currentLimit}</Text>
+                <Text style={styles.stepperUnit}>{mode.unit}</Text>
+              </View>
+              <Pressable accessibilityRole="button" accessibilityLabel="Increase limit" onPress={() => adjustLimit(mode.step)} style={({ pressed }) => [styles.stepperButton, { opacity: pressed ? 0.6 : 1 }]}>
+                <Icon name="add" color={COLORS.text} size={18} />
+              </Pressable>
+            </View>
+          </View>
+
+          <View style={styles.calibrationRow}>
+            <View style={styles.calibrationCopy}>
+              <Icon name={calibrated ? "checkmark-circle" : "locate-outline"} color={calibrated ? COLORS.moss : COLORS.sand} size={20} />
+              <View>
+                <Text style={styles.calibrationTitle}>{calibrated ? "Controls calibrated" : "Calibration required"}</Text>
+                <Text style={styles.calibrationDetail}>{calibrated ? "Portrait layout · farm anchor saved" : "Match touch targets before sending actions"}</Text>
+              </View>
+            </View>
+            <Pressable accessibilityRole="button" onPress={beginCalibration} style={({ pressed }) => [styles.textButton, { opacity: pressed ? 0.6 : 1 }]}>
+              <Text style={styles.textButtonText}>{calibrated ? "RECALIBRATE" : "CALIBRATE"}</Text>
+            </Pressable>
+          </View>
+
+          {mode.status === "planned" ? (
+            <View style={styles.plannedNotice}>
+              <Icon name="construct-outline" color={COLORS.muted} size={18} />
+              <Text style={styles.plannedNoticeText}>This mode is prepared in the prototype and will be activated after the farming loop is proven safe.</Text>
+            </View>
+          ) : null}
+        </View>
+
+        <SectionLabel right="ALWAYS ARMED">SAFETY MONITOR</SectionLabel>
+        <View style={styles.safetyPanel}>
+          {SAFETY_RULES.map((rule) => (
+            <SafetyChip key={rule.label} {...rule} />
+          ))}
+        </View>
+        <Text style={styles.disclaimer}>BlockMate never edits your world or asks for a Microsoft password. Real Android Accessibility and screen-capture wiring will be connected in the device build.</Text>
+
+        <View style={styles.controlShelf}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Stop automation" onPress={stopRun} style={({ pressed }) => [styles.stopButton, { opacity: pressed ? 0.72 : 1 }]}>
+            <Icon name="stop" color={COLORS.white} size={22} />
+            <Text style={styles.stopButtonText}>STOP</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" disabled={!isActiveMode || runState === "safety_stop"} onPress={isPaused ? resumeRun : isRunning ? pauseRun : startRun} style={({ pressed }) => [styles.startButton, !isActiveMode && styles.buttonDisabled, { opacity: pressed ? 0.8 : 1 }]}>
+            <Icon name={isPaused ? "play" : isRunning ? "pause" : "play"} color={COLORS.background} size={20} />
+            <Text style={styles.startButtonText}>{isPaused ? "RESUME" : isRunning ? "PAUSE" : isActiveMode ? "START FARMING" : "PLANNED MODE"}</Text>
+          </Pressable>
+        </View>
       </ScrollView>
+
+      {introVisible ? (
+        <Sheet onClose={dismissIntro}>
+          <View style={styles.sheetHandle} />
+          <View style={styles.sheetIcon}><Icon name="shield-checkmark-outline" color={COLORS.moss} size={30} /></View>
+          <Text style={styles.sheetEyebrow}>BEFORE YOU RUN</Text>
+          <Text style={styles.sheetTitle}>A careful companion, not a Minecraft mod.</Text>
+          <Text style={styles.sheetBody}>BlockMate is designed around your unmodified Bedrock world. The prototype needs a calibrated portrait layout and, on Android, Accessibility plus screen-recognition access to send and verify gestures.</Text>
+          <View style={styles.infoList}>
+            {[
+              ["No world edits", "No add-ons, behavior packs, or server changes."],
+              ["No passwords", "Your Microsoft login stays inside Minecraft."],
+              ["Stop anytime", "STOP is always available and ends the loop immediately."],
+            ].map(([title, body]) => (
+              <View key={title} style={styles.infoItem}>
+                <View style={styles.infoBullet}><Icon name="checkmark" color={COLORS.moss} size={14} /></View>
+                <View style={styles.infoText}><Text style={styles.infoTitle}>{title}</Text><Text style={styles.infoBody}>{body}</Text></View>
+              </View>
+            ))}
+          </View>
+          <Pressable accessibilityRole="button" onPress={dismissIntro} style={({ pressed }) => [styles.sheetPrimaryButton, { opacity: pressed ? 0.82 : 1 }]}>
+            <Text style={styles.sheetPrimaryText}>I UNDERSTAND</Text>
+            <Icon name="arrow-forward" color={COLORS.background} size={18} />
+          </Pressable>
+        </Sheet>
+      ) : null}
+
+      {calibrationVisible ? (
+        <Sheet onClose={() => setCalibrationVisible(false)}>
+          <View style={styles.sheetHandle} />
+          <View style={styles.sheetTitleRow}><View><Text style={styles.sheetEyebrow}>SETUP / {calibrationStep} OF 3</Text><Text style={styles.sheetTitle}>Calibrate your controls</Text></View><Pressable onPress={() => setCalibrationVisible(false)}><Icon name="close" color={COLORS.muted} size={24} /></Pressable></View>
+          <Text style={styles.sheetBody}>Keep Minecraft visible in portrait mode. Complete each check so the future native bridge knows where to look and where to tap.</Text>
+          <View style={styles.calibrationSteps}>
+            {[
+              ["Touch layout", "Confirm the movement pad and action button are visible."],
+              ["Screen regions", "Keep the health, hotbar, and inventory areas on screen."],
+              ["Farm anchor", "Stand at the first crop row with a tool selected."],
+            ].map(([title, body], index) => {
+              const checked = calibrationChecks[index];
+              return (
+                <Pressable key={title} onPress={() => setCalibrationChecks((previous) => previous.map((value, itemIndex) => itemIndex === index ? !value : value))} style={styles.calibrationStepRow}>
+                  <View style={[styles.checkBox, checked && styles.checkBoxChecked]}>{checked ? <Icon name="checkmark" color={COLORS.background} size={16} /> : <Text style={styles.checkNumber}>{index + 1}</Text>}</View>
+                  <View style={styles.infoText}><Text style={styles.infoTitle}>{title}</Text><Text style={styles.infoBody}>{body}</Text></View>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Pressable accessibilityRole="button" disabled={!calibrationChecks.every(Boolean)} onPress={() => calibrationStep < 3 ? setCalibrationStep((value) => value + 1) : completeCalibration()} style={({ pressed }) => [styles.sheetPrimaryButton, !calibrationChecks.every(Boolean) && styles.buttonDisabled, { opacity: pressed ? 0.82 : 1 }]}>
+            <Text style={styles.sheetPrimaryText}>{calibrationStep < 3 ? "NEXT CHECK" : "SAVE CALIBRATION"}</Text>
+            <Icon name={calibrationStep < 3 ? "arrow-forward" : "checkmark"} color={COLORS.background} size={18} />
+          </Pressable>
+        </Sheet>
+      ) : null}
+
+      {confirmVisible ? (
+        <Sheet onClose={() => setConfirmVisible(false)}>
+          <View style={styles.sheetHandle} />
+          <View style={styles.sheetIcon}><Icon name="leaf-outline" color={COLORS.moss} size={30} /></View>
+          <Text style={styles.sheetEyebrow}>START FARMING LOOP</Text>
+          <Text style={styles.sheetTitle}>Ready to send {currentLimit} actions?</Text>
+          <Text style={styles.sheetBody}>Keep your prepared farm and the calibrated Minecraft view visible. BlockMate will pause the prototype loop if a safety signal changes.</Text>
+          <View style={styles.confirmBox}><Text style={styles.confirmBoxLabel}>LIMIT</Text><Text style={styles.confirmBoxValue}>{currentLimit} <Text style={styles.confirmBoxUnit}>{mode.unit}</Text></Text><Text style={styles.confirmBoxHint}>Safe default · emergency STOP stays available</Text></View>
+          <Pressable accessibilityRole="button" onPress={confirmStart} style={({ pressed }) => [styles.sheetPrimaryButton, { opacity: pressed ? 0.82 : 1 }]}><Text style={styles.sheetPrimaryText}>START PROTOTYPE LOOP</Text><Icon name="play" color={COLORS.background} size={18} /></Pressable>
+          <Pressable accessibilityRole="button" onPress={() => setConfirmVisible(false)} style={styles.sheetSecondaryButton}><Text style={styles.sheetSecondaryText}>NOT YET</Text></Pressable>
+        </Sheet>
+      ) : null}
     </ScreenContainer>
   );
 }
+
+const styles = StyleSheet.create({
+  content: { paddingHorizontal: 18, paddingTop: 18, paddingBottom: 34, gap: 18 },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  brandRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  logo: { width: 42, height: 42, borderRadius: 12 },
+  wordmark: { color: COLORS.text, fontSize: 20, fontWeight: "800", letterSpacing: -0.5 },
+  eyebrow: { color: COLORS.muted, fontSize: 9, fontWeight: "800", letterSpacing: 1.3, marginTop: 2 },
+  headerRight: { flexDirection: "row", alignItems: "center", gap: 8 },
+  previewTag: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 9, paddingVertical: 7, borderRadius: 99, backgroundColor: COLORS.panel, borderWidth: 1, borderColor: COLORS.line },
+  previewDot: { width: 6, height: 6, borderRadius: 99, backgroundColor: COLORS.moss },
+  previewText: { color: COLORS.muted, fontSize: 9, fontWeight: "800", letterSpacing: 0.8 },
+  headerButton: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center", backgroundColor: COLORS.panel },
+  heroRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", paddingTop: 8 },
+  heroCopy: { flex: 1, paddingRight: 16 },
+  heroKicker: { color: COLORS.moss, fontSize: 10, fontWeight: "800", letterSpacing: 1.8, marginBottom: 8 },
+  heroTitle: { color: COLORS.text, fontSize: 32, lineHeight: 34, fontWeight: "800", letterSpacing: -1.3 },
+  heroBody: { color: COLORS.muted, fontSize: 13, lineHeight: 19, marginTop: 10, maxWidth: 270 },
+  heroBadge: { width: 76, height: 84, borderRadius: 20, backgroundColor: `${COLORS.moss}12`, borderWidth: 1, borderColor: `${COLORS.moss}42`, alignItems: "center", justifyContent: "center", gap: 6 },
+  heroBadgeText: { color: COLORS.moss, fontSize: 10, lineHeight: 11, fontWeight: "900", letterSpacing: 1.3, textAlign: "center" },
+  statusCard: { backgroundColor: COLORS.panel, borderRadius: 20, borderWidth: 1, borderColor: COLORS.line, padding: 16 },
+  statusCardTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
+  cardEyebrow: { color: COLORS.muted, fontSize: 9, fontWeight: "800", letterSpacing: 1.5, marginBottom: 6 },
+  statusTitle: { color: COLORS.text, fontSize: 19, fontWeight: "800", letterSpacing: -0.3 },
+  statePill: { flexDirection: "row", alignItems: "center", gap: 6, borderWidth: 1, borderRadius: 99, paddingHorizontal: 9, paddingVertical: 7 },
+  statePillText: { fontSize: 10, fontWeight: "800", letterSpacing: 0.5 },
+  statusDivider: { height: 1, backgroundColor: COLORS.line, marginVertical: 14 },
+  statusTelemetry: { flexDirection: "row", justifyContent: "space-between" },
+  telemetryBlock: { flex: 1 },
+  telemetryBlockRight: { alignItems: "flex-end" },
+  telemetryLabel: { color: COLORS.muted, fontSize: 9, fontWeight: "800", letterSpacing: 1.2, marginBottom: 5 },
+  telemetryValue: { color: COLORS.text, fontSize: 13, fontWeight: "700" },
+  progressTrack: { height: 6, borderRadius: 99, backgroundColor: COLORS.background, overflow: "hidden", marginTop: 14 },
+  progressFill: { height: "100%", backgroundColor: COLORS.moss, borderRadius: 99 },
+  toast: { color: COLORS.muted, fontSize: 11, lineHeight: 16, marginTop: 10 },
+  sectionLabelRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 2 },
+  sectionLabel: { color: COLORS.text, fontSize: 10, fontWeight: "900", letterSpacing: 1.4 },
+  sectionLabelRight: { color: COLORS.muted, fontSize: 9, fontWeight: "800", letterSpacing: 1.1 },
+  modeRail: { gap: 10, paddingRight: 10 },
+  modeCard: { width: 96, height: 100, borderRadius: 16, backgroundColor: COLORS.panel, borderWidth: 1, padding: 11, justifyContent: "space-between" },
+  modeCardSelected: { backgroundColor: COLORS.panelRaised },
+  modeIcon: { width: 34, height: 34, borderRadius: 11, alignItems: "center", justifyContent: "center" },
+  modeCardLabel: { color: COLORS.muted, fontSize: 13, fontWeight: "800" },
+  modeCardStatus: { flexDirection: "row", alignItems: "center", gap: 5 },
+  statusDot: { width: 5, height: 5, borderRadius: 99 },
+  modeCardStatusText: { color: COLORS.muted, fontSize: 8, fontWeight: "900", letterSpacing: 0.8 },
+  modePanel: { backgroundColor: COLORS.panel, borderRadius: 20, borderWidth: 1, padding: 16, gap: 15 },
+  modePanelHeader: { flexDirection: "row", gap: 12 },
+  largeModeIcon: { width: 52, height: 52, borderRadius: 16, alignItems: "center", justifyContent: "center" },
+  modePanelTitleWrap: { flex: 1 },
+  titleLine: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 7 },
+  modePanelTitle: { color: COLORS.text, fontSize: 17, fontWeight: "800", flexShrink: 1 },
+  inlineStatus: { paddingHorizontal: 6, paddingVertical: 3, borderRadius: 99 },
+  inlineStatusText: { fontSize: 8, fontWeight: "900", letterSpacing: 0.8 },
+  modePanelBody: { color: COLORS.muted, fontSize: 12, lineHeight: 17, marginTop: 5 },
+  settingRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingTop: 3 },
+  settingLabel: { color: COLORS.text, fontSize: 11, fontWeight: "900", letterSpacing: 1.1 },
+  settingHint: { color: COLORS.muted, fontSize: 10, marginTop: 4 },
+  stepper: { flexDirection: "row", alignItems: "center", gap: 7 },
+  stepperButton: { width: 34, height: 34, borderRadius: 10, backgroundColor: COLORS.panelSoft, alignItems: "center", justifyContent: "center" },
+  stepperValueWrap: { alignItems: "center", minWidth: 48 },
+  stepperValue: { color: COLORS.text, fontSize: 17, fontWeight: "900" },
+  stepperUnit: { color: COLORS.muted, fontSize: 8, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.6 },
+  calibrationRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 14, borderTopWidth: 1, borderTopColor: COLORS.line },
+  calibrationCopy: { flexDirection: "row", alignItems: "center", gap: 9, flex: 1 },
+  calibrationTitle: { color: COLORS.text, fontSize: 12, fontWeight: "800" },
+  calibrationDetail: { color: COLORS.muted, fontSize: 10, marginTop: 3 },
+  textButton: { paddingHorizontal: 8, paddingVertical: 8 },
+  textButtonText: { color: COLORS.sand, fontSize: 10, fontWeight: "900", letterSpacing: 0.8 },
+  plannedNotice: { flexDirection: "row", gap: 9, backgroundColor: COLORS.background, borderRadius: 12, padding: 11, alignItems: "flex-start" },
+  plannedNoticeText: { color: COLORS.muted, flex: 1, fontSize: 11, lineHeight: 15 },
+  safetyPanel: { flexDirection: "row", gap: 8 },
+  safetyChip: { flex: 1, backgroundColor: COLORS.panel, borderRadius: 14, borderWidth: 1, borderColor: COLORS.line, padding: 11 },
+  safetyChipTop: { flexDirection: "row", alignItems: "center", gap: 6 },
+  safetyDot: { width: 6, height: 6, borderRadius: 99 },
+  safetyChipLabel: { color: COLORS.muted, fontSize: 9, fontWeight: "900", letterSpacing: 0.8 },
+  safetyChipValue: { fontSize: 17, fontWeight: "900", marginTop: 8 },
+  safetyChipDetail: { color: COLORS.muted, fontSize: 9, lineHeight: 13, marginTop: 3 },
+  disclaimer: { color: COLORS.muted, fontSize: 10, lineHeight: 15, paddingHorizontal: 3 },
+  controlShelf: { flexDirection: "row", gap: 10, paddingTop: 4 },
+  stopButton: { width: 76, minHeight: 56, borderRadius: 16, backgroundColor: COLORS.coral, alignItems: "center", justifyContent: "center", gap: 2 },
+  stopButtonText: { color: COLORS.white, fontSize: 10, fontWeight: "900", letterSpacing: 1.2 },
+  startButton: { flex: 1, minHeight: 56, borderRadius: 16, backgroundColor: COLORS.moss, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9 },
+  startButtonText: { color: COLORS.background, fontSize: 12, fontWeight: "900", letterSpacing: 0.7 },
+  buttonDisabled: { backgroundColor: COLORS.line },
+  modalBackdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: "#00000099" },
+  sheet: { backgroundColor: COLORS.panel, borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 26, borderWidth: 1, borderColor: COLORS.line, gap: 14 },
+  sheetHandle: { width: 42, height: 4, borderRadius: 99, backgroundColor: COLORS.line, alignSelf: "center", marginBottom: 5 },
+  sheetIcon: { width: 58, height: 58, borderRadius: 18, backgroundColor: `${COLORS.moss}18`, alignItems: "center", justifyContent: "center" },
+  sheetEyebrow: { color: COLORS.moss, fontSize: 10, fontWeight: "900", letterSpacing: 1.4 },
+  sheetTitle: { color: COLORS.text, fontSize: 25, lineHeight: 29, fontWeight: "900", letterSpacing: -0.7 },
+  sheetBody: { color: COLORS.muted, fontSize: 13, lineHeight: 19 },
+  infoList: { gap: 12, paddingVertical: 3 },
+  infoItem: { flexDirection: "row", gap: 10, alignItems: "flex-start" },
+  infoBullet: { width: 23, height: 23, borderRadius: 8, backgroundColor: `${COLORS.moss}18`, alignItems: "center", justifyContent: "center" },
+  infoText: { flex: 1 },
+  infoTitle: { color: COLORS.text, fontSize: 12, fontWeight: "800" },
+  infoBody: { color: COLORS.muted, fontSize: 11, lineHeight: 16, marginTop: 2 },
+  sheetPrimaryButton: { minHeight: 54, borderRadius: 15, backgroundColor: COLORS.moss, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9, marginTop: 2 },
+  sheetPrimaryText: { color: COLORS.background, fontSize: 11, fontWeight: "900", letterSpacing: 0.8 },
+  sheetSecondaryButton: { alignItems: "center", paddingVertical: 10 },
+  sheetSecondaryText: { color: COLORS.muted, fontSize: 10, fontWeight: "900", letterSpacing: 1.1 },
+  sheetTitleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
+  calibrationSteps: { gap: 8 },
+  calibrationStepRow: { flexDirection: "row", alignItems: "center", gap: 11, backgroundColor: COLORS.background, borderRadius: 14, padding: 11 },
+  checkBox: { width: 28, height: 28, borderRadius: 9, borderWidth: 1, borderColor: COLORS.line, alignItems: "center", justifyContent: "center" },
+  checkBoxChecked: { backgroundColor: COLORS.moss, borderColor: COLORS.moss },
+  checkNumber: { color: COLORS.muted, fontSize: 12, fontWeight: "900" },
+  confirmBox: { backgroundColor: COLORS.background, borderRadius: 15, borderWidth: 1, borderColor: COLORS.line, padding: 14 },
+  confirmBoxLabel: { color: COLORS.muted, fontSize: 9, fontWeight: "900", letterSpacing: 1.2 },
+  confirmBoxValue: { color: COLORS.moss, fontSize: 29, fontWeight: "900", marginTop: 4 },
+  confirmBoxUnit: { color: COLORS.muted, fontSize: 12, fontWeight: "800" },
+  confirmBoxHint: { color: COLORS.muted, fontSize: 10, marginTop: 2 },
+});
