@@ -52,6 +52,9 @@ class BlockMateAccessibilityService : AccessibilityService() {
     lastForegroundPackage = packageName
     if (packageName == MINECRAFT_PACKAGE) {
       lastStatus = "minecraft_foreground"
+    } else if (!stopRequested.get()) {
+      stopAutomation()
+      lastStatus = "minecraft_left_foreground"
     }
   }
 
@@ -166,7 +169,7 @@ class BlockMateAccessibilityService : AccessibilityService() {
 
   private fun isMinecraftForeground(): Boolean {
     val activePackage = rootInActiveWindow?.packageName?.toString()
-    return activePackage == MINECRAFT_PACKAGE || lastForegroundPackage == MINECRAFT_PACKAGE
+    return activePackage == MINECRAFT_PACKAGE || (activePackage == null && lastForegroundPackage == MINECRAFT_PACKAGE)
   }
 
   private fun displaySize(): Pair<Int, Int> {

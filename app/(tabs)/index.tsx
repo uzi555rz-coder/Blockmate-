@@ -19,7 +19,7 @@ import {
   type AutomationModeId,
   type RunState,
 } from "@/lib/blockmate";
-import { getBridgeStatus, openAccessibilitySettings, type BlockMateNativeStatus } from "@/lib/blockmate-native";
+import { armBridge, getBridgeStatus, isNativeBridgeAvailable, openAccessibilitySettings, stopBridge, type BlockMateNativeStatus } from "@/lib/blockmate-native";
 
 const COLORS = {
   background: "#101713",
@@ -224,7 +224,19 @@ export default function HomeScreen() {
     setConfirmVisible(true);
   }
 
-  function confirmStart() {
+  async function confirmStart() {
+    if (isNativeBridgeAvailable()) {
+      try {
+        const status = await armBridge();
+        if (!status.minecraftForeground) {
+          setToast("Open Minecraft Bedrock first; no gesture was sent.");
+          return;
+        }
+      } catch {
+        setToast("Enable BlockMate Minecraft controls before starting.");
+        return;
+      }
+    }
     setConfirmVisible(false);
     setActionCount(0);
     setPhase("Checking plot");
@@ -232,17 +244,31 @@ export default function HomeScreen() {
     setRunState("running");
   }
 
-  function pauseRun() {
+  async function pauseRun() {
+    if (isNativeBridgeAvailable()) await stopBridge();
     setRunState("paused");
     setToast("Automation paused. Your world is safe.");
   }
 
-  function resumeRun() {
+  async function resumeRun() {
+    if (isNativeBridgeAvailable()) {
+      try {
+        const status = await armBridge();
+        if (!status.minecraftForeground) {
+          setToast("Open Minecraft Bedrock first; automation remains paused.");
+          return;
+        }
+      } catch {
+        setToast("Enable BlockMate Minecraft controls before resuming.");
+        return;
+      }
+    }
     setRunState("running");
     setToast("Automation resumed. Safety checks remain armed.");
   }
 
-  function stopRun() {
+  async function stopRun() {
+    if (isNativeBridgeAvailable()) await stopBridge();
     setRunState(calibrated ? "stopped" : "idle");
     setPhase(calibrated ? "Farm anchor ready" : "Waiting for calibration");
     setToast("Emergency stop received. No more actions will be sent.");

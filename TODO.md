@@ -6,9 +6,10 @@
 
 ## 2. Farming prototype run
 - [in progress] Farming and replanting is the first functional automation mode and uses a calibrated interaction sequence in the prototype run loop.
-- [in progress] The Android native Accessibility gesture bridge is scaffolded as a local Expo module with service status, Accessibility Settings, arm/stop, Minecraft foreground gating, and 2400x1080 reference-coordinate taps and swipes.
+- [in progress] The Android native Accessibility gesture bridge is integrated as a local Expo module with service status, Accessibility Settings, arm/stop, Minecraft foreground gating, and 2400x1080 reference-coordinate taps and swipes; the app's Start, Pause, Resume, and emergency STOP controls call the bridge when running in the custom APK.
 - [ ] The Android APK is built and installed on the OnePlus 8 running Android 13, Accessibility is enabled, and one harmless tap plus one joystick swipe are verified in Minecraft Bedrock Beta 1.21.100.23.
 - [ ] Screenshot recognition and the fixed farming state machine are connected after the harmless gesture test succeeds; AI planning remains constrained to user-selected actions and safety rules.
+- [ ] Complete the physical APK/device procedure in `DEVICE-TEST.md`; the sandbox cannot claim this native-only result without the OnePlus 8 test.
 
 ## 3. Calibration and permissions
 - [in progress] The app includes a guided calibration flow for matching BlockMate to the phone's Minecraft Bedrock control layout, touch targets, orientation, and relevant screen regions.
