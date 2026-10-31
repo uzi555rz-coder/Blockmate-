@@ -1,0 +1,14 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'com.blockmate'
+version = '1.0.0'
+
+android {
+  namespace "com.blockmate.nativebridge"
+  defaultConfig {
+    minSdkVersion 24
+  }
+}

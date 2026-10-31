@@ -1,12 +1,14 @@
 # BlockMate implementation plan
 
 ## Product scope
-BlockMate is a portrait-first Android companion for an unmodified Minecraft Bedrock survival world. The first prototype gives the player a safe control hub for five automation modes: farming and replanting, tree chopping, straight-tunnel mining, fishing, and repeated combat. Farming is the first active mode in this prototype; the other four modes have prepared screens and controls and are clearly marked as planned. The app does not modify Minecraft, install add-ons or behavior packs, or request a Microsoft password.
+BlockMate is an Android companion for an unmodified Minecraft Bedrock survival world. The prototype control hub is portrait-first, while the native Minecraft bridge targets a OnePlus 8 running Android 13 and Minecraft Bedrock Beta 1.21.100.23 in landscape at a 2400x1080 reference resolution. The first real bridge milestone provides Accessibility-based gesture dispatch with foreground-package gating and an immediate stop path. The app does not modify Minecraft, install add-ons or behavior packs, or request a Microsoft password.
 
-The prototype models Android Accessibility and screen-recognition capabilities through an explicit onboarding and calibration flow, a deterministic demo run loop, and safety-state UI. A later native Android service can connect the existing control surface to actual gestures and screen regions without changing the product's interaction model.
+The prototype models screen-recognition capabilities through an explicit onboarding and calibration flow, a deterministic demo run loop, and safety-state UI. The local Expo native module now connects the product surface to an Android AccessibilityService that maps 2400x1080 reference taps and swipes onto the actual landscape display. Screenshot recognition, AI planning, and the continuous farming state machine remain subsequent milestones.
 
 ## Implementation approach
 - Use the fixed Expo Router / React Native / TypeScript / NativeWind starter.
+- Add the local Expo module in `modules/blockmate-native` with Kotlin AccessibilityService code, Android service metadata, and a JavaScript wrapper in `lib/blockmate-native.ts`.
+- Gate every real gesture on Accessibility enabled, Minecraft foreground, landscape display, and an explicit arm command.
 - Keep the primary screen in `app/(tabs)/index.tsx` with local state for selected mode, calibration, onboarding disclosure, run state, progress, and per-mode limits.
 - Add a small `lib/blockmate.ts` module for shared mode metadata, safety rules, and typed run-state values.
 - Use `components/screen-container.tsx` for safe-area handling and a compact component vocabulary in the home screen: header, status card, mode cards, safety strip, calibration modal, and run controls.

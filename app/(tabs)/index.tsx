@@ -19,6 +19,7 @@ import {
   type AutomationModeId,
   type RunState,
 } from "@/lib/blockmate";
+import { getBridgeStatus, openAccessibilitySettings, type BlockMateNativeStatus } from "@/lib/blockmate-native";
 
 const COLORS = {
   background: "#101713",
@@ -133,6 +134,7 @@ export default function HomeScreen() {
   const [actionCount, setActionCount] = useState(0);
   const [toast, setToast] = useState("Ready when you are.");
   const [phase, setPhase] = useState("Waiting for calibration");
+  const [bridgeStatus, setBridgeStatus] = useState<BlockMateNativeStatus | null>(null);
 
   const mode = useMemo(() => getMode(selectedMode), [selectedMode]);
   const isRunning = runState === "running";
@@ -183,6 +185,21 @@ export default function HomeScreen() {
     setCalibrationStep(1);
     setCalibrationChecks([false, false, false]);
     setCalibrationVisible(true);
+    void refreshBridgeStatus();
+  }
+
+  async function refreshBridgeStatus() {
+    const status = await getBridgeStatus();
+    setBridgeStatus(status);
+  }
+
+  async function openNativeAccessibilitySettings() {
+    try {
+      await openAccessibilitySettings();
+      setToast("Enable BlockMate Minecraft controls, then return here.");
+    } catch {
+      setToast("Native Android bridge is available only in the custom APK build.");
+    }
   }
 
   function completeCalibration() {
@@ -365,7 +382,7 @@ export default function HomeScreen() {
             <SafetyChip key={rule.label} {...rule} />
           ))}
         </View>
-        <Text style={styles.disclaimer}>BlockMate never edits your world or asks for a Microsoft password. Real Android Accessibility and screen-capture wiring will be connected in the device build.</Text>
+        <Text style={styles.disclaimer}>BlockMate never edits your world or asks for a Microsoft password. The Android gesture bridge is included in the custom APK build; the Web preview remains a simulation.</Text>
 
         <View style={styles.controlShelf}>
           <Pressable accessibilityRole="button" accessibilityLabel="Stop automation" onPress={stopRun} style={({ pressed }) => [styles.stopButton, { opacity: pressed ? 0.72 : 1 }]}>
@@ -409,7 +426,18 @@ export default function HomeScreen() {
         <Sheet onClose={() => setCalibrationVisible(false)}>
           <View style={styles.sheetHandle} />
           <View style={styles.sheetTitleRow}><View><Text style={styles.sheetEyebrow}>SETUP / {calibrationStep} OF 3</Text><Text style={styles.sheetTitle}>Calibrate your controls</Text></View><Pressable onPress={() => setCalibrationVisible(false)}><Icon name="close" color={COLORS.muted} size={24} /></Pressable></View>
-          <Text style={styles.sheetBody}>Keep Minecraft visible in portrait mode. Complete each check so the future native bridge knows where to look and where to tap.</Text>
+          <Text style={styles.sheetBody}>Keep Minecraft visible in landscape at 2400×1080. Complete each check so the native bridge knows where to look and where to tap.</Text>
+          <View style={styles.bridgeBox}>
+            <View style={styles.bridgeBoxHeader}>
+              <Icon name={bridgeStatus?.serviceEnabled ? "checkmark-circle" : "hardware-chip-outline"} color={bridgeStatus?.serviceEnabled ? COLORS.moss : COLORS.sand} size={18} />
+              <Text style={styles.bridgeBoxTitle}>{bridgeStatus?.serviceEnabled ? "Accessibility service detected" : "Android bridge setup"}</Text>
+            </View>
+            <Text style={styles.bridgeBoxDetail}>{bridgeStatus?.serviceEnabled ? `${bridgeStatus.displayWidth}×${bridgeStatus.displayHeight} display · ${bridgeStatus.lastStatus}` : "The custom APK must be granted Accessibility access before it can send a gesture."}</Text>
+            <View style={styles.bridgeBoxActions}>
+              <Pressable accessibilityRole="button" onPress={openNativeAccessibilitySettings} style={styles.bridgeButton}><Text style={styles.bridgeButtonText}>OPEN SETTINGS</Text></Pressable>
+              <Pressable accessibilityRole="button" onPress={() => void refreshBridgeStatus()} style={styles.bridgeButton}><Text style={styles.bridgeButtonText}>REFRESH</Text></Pressable>
+            </View>
+          </View>
           <View style={styles.calibrationSteps}>
             {[
               ["Touch layout", "Confirm the movement pad and action button are visible."],
@@ -526,6 +554,13 @@ const styles = StyleSheet.create({
   safetyChipValue: { fontSize: 17, fontWeight: "900", marginTop: 8 },
   safetyChipDetail: { color: COLORS.muted, fontSize: 9, lineHeight: 13, marginTop: 3 },
   disclaimer: { color: COLORS.muted, fontSize: 10, lineHeight: 15, paddingHorizontal: 3 },
+  bridgeBox: { backgroundColor: COLORS.background, borderRadius: 14, borderWidth: 1, borderColor: COLORS.line, padding: 12, gap: 8 },
+  bridgeBoxHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
+  bridgeBoxTitle: { color: COLORS.text, fontSize: 12, fontWeight: "800" },
+  bridgeBoxDetail: { color: COLORS.muted, fontSize: 10, lineHeight: 15 },
+  bridgeBoxActions: { flexDirection: "row", gap: 8 },
+  bridgeButton: { backgroundColor: COLORS.panelSoft, borderRadius: 9, paddingHorizontal: 10, paddingVertical: 8 },
+  bridgeButtonText: { color: COLORS.sand, fontSize: 9, fontWeight: "900", letterSpacing: 0.7 },
   controlShelf: { flexDirection: "row", gap: 10, paddingTop: 4 },
   stopButton: { width: 76, minHeight: 56, borderRadius: 16, backgroundColor: COLORS.coral, alignItems: "center", justifyContent: "center", gap: 2 },
   stopButtonText: { color: COLORS.white, fontSize: 10, fontWeight: "900", letterSpacing: 1.2 },
