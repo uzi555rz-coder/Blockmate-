@@ -1,4 +1,4 @@
-export type AutomationModeId = "farm" | "trees" | "mine" | "fish" | "combat";
+export type AutomationModeId = "farm" | "trees" | "mine" | "fish" | "combat" | "build";
 
 export type RunState = "idle" | "calibrated" | "running" | "paused" | "stopped" | "safety_stop";
 
@@ -95,6 +95,21 @@ export const BLOCKMATE_MODES: BlockMateMode[] = [
     minLimit: 1,
     maxLimit: 8,
     step: 1,
+  },
+  {
+    id: "build",
+    label: "Blueprint building",
+    shortLabel: "Build",
+    description: "Study a blueprint, calculate materials and dimensions, confirm the allotted land, then prepare the block-by-block build order.",
+    status: "active",
+    icon: "business-outline",
+    accent: "#D9A86C",
+    limitLabel: "Blocks",
+    unit: "blocks",
+    defaultLimit: 64,
+    minLimit: 1,
+    maxLimit: 2048,
+    step: 16,
   },
 ];
 

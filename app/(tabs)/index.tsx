@@ -1,5 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
+import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system/legacy";
 import { useEffect, useMemo, useState } from "react";
 import {
   Image,
@@ -20,6 +22,7 @@ import {
   type RunState,
 } from "@/lib/blockmate";
 import { armBridge, getBridgeStatus, isNativeBridgeAvailable, openAccessibilitySettings, stopBridge, type BlockMateNativeStatus } from "@/lib/blockmate-native";
+import { analyzeBlueprint, type BlueprintAnalysis } from "@/lib/building";
 
 const COLORS = {
   background: "#101713",
@@ -126,6 +129,7 @@ export default function HomeScreen() {
   const [introVisible, setIntroVisible] = useState(false);
   const [calibrationVisible, setCalibrationVisible] = useState(false);
   const [confirmVisible, setConfirmVisible] = useState(false);
+  const [buildingVisible, setBuildingVisible] = useState(false);
   const [calibrationStep, setCalibrationStep] = useState(1);
   const [calibrationChecks, setCalibrationChecks] = useState([false, false, false]);
   const [limits, setLimits] = useState<Record<AutomationModeId, number>>(
@@ -135,6 +139,8 @@ export default function HomeScreen() {
   const [toast, setToast] = useState("Ready when you are.");
   const [phase, setPhase] = useState("Waiting for calibration");
   const [bridgeStatus, setBridgeStatus] = useState<BlockMateNativeStatus | null>(null);
+  const [blueprint, setBlueprint] = useState<BlueprintAnalysis | null>(null);
+  const [buildStage, setBuildStage] = useState<"file" | "land" | "ready">("file");
 
   const mode = useMemo(() => getMode(selectedMode), [selectedMode]);
   const isRunning = runState === "running";
@@ -142,7 +148,7 @@ export default function HomeScreen() {
   const isActiveMode = mode.status === "active";
   const currentLimit = limits[selectedMode];
   const progress = Math.min(100, Math.round((actionCount / Math.max(currentLimit, 1)) * 100));
-  const livePhases = ["Checking plot", "Harvesting row", "Replanting row", "Returning to anchor"];
+  const livePhases = selectedMode === "build" ? ["Checking allotted land", "Selecting block", "Placing block", "Verifying layer"] : ["Checking plot", "Harvesting row", "Replanting row", "Returning to anchor"];
   const currentPhase = isRunning ? livePhases[actionCount % livePhases.length] : phase;
 
   useEffect(() => {
@@ -202,6 +208,38 @@ export default function HomeScreen() {
     }
   }
 
+  async function chooseBlueprint() {
+    const result = await DocumentPicker.getDocumentAsync({
+      type: "application/json",
+      copyToCacheDirectory: true,
+      multiple: false,
+    });
+    if (result.canceled || !result.assets[0]) return;
+    try {
+      const asset = result.assets[0];
+      const text = Platform.OS === "web"
+        ? await fetch(asset.uri).then((response) => response.text())
+        : await FileSystem.readAsStringAsync(asset.uri);
+      const nextBlueprint = analyzeBlueprint(JSON.parse(text), asset.name.replace(/\.json$/i, ""));
+      setBlueprint(nextBlueprint);
+      setBuildStage("land");
+      setToast(`${nextBlueprint.name} analyzed. Confirm the allotted land next.`);
+    } catch {
+      setToast("This file could not be analyzed. Use the JSON blueprint format shown in the builder.");
+    }
+  }
+
+  function openBuilder() {
+    setBuildingVisible(true);
+    if (!blueprint) setBuildStage("file");
+  }
+
+  function confirmLand() {
+    if (!blueprint) return;
+    setBuildStage("ready");
+    setToast("Allotted land recorded. The build order is ready for confirmation.");
+  }
+
   function completeCalibration() {
     setCalibrated(true);
     setRunState("calibrated");
@@ -212,6 +250,14 @@ export default function HomeScreen() {
   }
 
   function startRun() {
+    if (selectedMode === "build") {
+      if (!blueprint || buildStage !== "ready") {
+        openBuilder();
+        return;
+      }
+      setConfirmVisible(true);
+      return;
+    }
     if (!isActiveMode) {
       setToast(`${mode.shortLabel} is staged for a later build.`);
       return;
@@ -239,8 +285,8 @@ export default function HomeScreen() {
     }
     setConfirmVisible(false);
     setActionCount(0);
-    setPhase("Checking plot");
-    setToast("Prototype loop running. Keep Minecraft in the calibrated view.");
+    setPhase(selectedMode === "build" ? "Checking allotted land" : "Checking plot");
+    setToast(selectedMode === "build" ? "Build sequence running. Keep the allotted land visible in Minecraft." : "Prototype loop running. Keep Minecraft in the calibrated view.");
     setRunState("running");
   }
 
@@ -339,7 +385,7 @@ export default function HomeScreen() {
           <Text style={styles.toast}>{toast}</Text>
         </View>
 
-        <SectionLabel right="5 MODES">AUTOMATION DECK</SectionLabel>
+        <SectionLabel right="6 MODES">AUTOMATION DECK</SectionLabel>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.modeRail}>
           {BLOCKMATE_MODES.map((item) => (
             <ModeCard key={item.id} id={item.id} selected={selectedMode === item.id} onPress={() => setSelectedMode(item.id)} />
@@ -361,6 +407,23 @@ export default function HomeScreen() {
               <Text style={styles.modePanelBody}>{mode.description}</Text>
             </View>
           </View>
+
+          {mode.id === "build" ? (
+            <View style={styles.blueprintSummary}>
+              <View style={styles.blueprintSummaryTop}>
+                <View>
+                  <Text style={styles.settingLabel}>BLUEPRINT FILE</Text>
+                  <Text style={styles.settingHint}>{blueprint ? `${blueprint.name} · ${blueprint.totalBlocks} blocks` : "No building file analyzed yet"}</Text>
+                </View>
+                <Icon name={blueprint ? "checkmark-circle" : "document-outline"} color={blueprint ? COLORS.moss : COLORS.sand} size={22} />
+              </View>
+              {blueprint ? <Text style={styles.blueprintDimensions}>{blueprint.dimensions.width}W × {blueprint.dimensions.height}H × {blueprint.dimensions.length}L · {blueprint.materials.length} materials</Text> : null}
+              <Pressable accessibilityRole="button" onPress={openBuilder} style={({ pressed }) => [styles.blueprintButton, { opacity: pressed ? 0.8 : 1 }]}>
+                <Text style={styles.blueprintButtonText}>{blueprint ? "REVIEW BUILD PLAN" : "CHOOSE BUILDING FILE"}</Text>
+                <Icon name="arrow-forward" color={COLORS.background} size={17} />
+              </Pressable>
+            </View>
+          ) : null}
 
           <View style={styles.settingRow}>
             <View>
@@ -417,7 +480,7 @@ export default function HomeScreen() {
           </Pressable>
           <Pressable accessibilityRole="button" disabled={!isActiveMode || runState === "safety_stop"} onPress={isPaused ? resumeRun : isRunning ? pauseRun : startRun} style={({ pressed }) => [styles.startButton, !isActiveMode && styles.buttonDisabled, { opacity: pressed ? 0.8 : 1 }]}>
             <Icon name={isPaused ? "play" : isRunning ? "pause" : "play"} color={COLORS.background} size={20} />
-            <Text style={styles.startButtonText}>{isPaused ? "RESUME" : isRunning ? "PAUSE" : isActiveMode ? "START FARMING" : "PLANNED MODE"}</Text>
+            <Text style={styles.startButtonText}>{isPaused ? "RESUME" : isRunning ? "PAUSE" : selectedMode === "build" ? "START BUILD" : isActiveMode ? "START FARMING" : "PLANNED MODE"}</Text>
           </Pressable>
         </View>
       </ScrollView>
@@ -445,6 +508,41 @@ export default function HomeScreen() {
             <Text style={styles.sheetPrimaryText}>I UNDERSTAND</Text>
             <Icon name="arrow-forward" color={COLORS.background} size={18} />
           </Pressable>
+        </Sheet>
+      ) : null}
+
+      {buildingVisible ? (
+        <Sheet onClose={() => setBuildingVisible(false)}>
+          <View style={styles.sheetHandle} />
+          <View style={styles.sheetTitleRow}>
+            <View><Text style={styles.sheetEyebrow}>BUILDING / {buildStage === "file" ? "1 OF 3" : buildStage === "land" ? "2 OF 3" : "3 OF 3"}</Text><Text style={styles.sheetTitle}>Blueprint Builder</Text></View>
+            <Pressable onPress={() => setBuildingVisible(false)}><Icon name="close" color={COLORS.muted} size={24} /></Pressable>
+          </View>
+          {buildStage === "file" ? (
+            <>
+              <Text style={styles.sheetBody}>Choose a JSON building file. BlockMate will study its blocks, calculate dimensions, and list the materials before anything is sent to Minecraft.</Text>
+              <View style={styles.formatBox}><Text style={styles.formatBoxTitle}>SUPPORTED FIRST FORMAT</Text><Text style={styles.formatBoxBody}>A JSON object with a name and blocks containing x, y, z, and block fields.</Text><Text style={styles.formatCode}>{'{ "blocks": [{ "x": 0, "y": 0, "z": 0, "block": "minecraft:stone" }] }'}</Text></View>
+              <Pressable accessibilityRole="button" onPress={() => void chooseBlueprint()} style={styles.sheetPrimaryButton}><Text style={styles.sheetPrimaryText}>CHOOSE BUILDING FILE</Text><Icon name="document-attach-outline" color={COLORS.background} size={18} /></Pressable>
+            </>
+          ) : blueprint ? (
+            <>
+              <View style={styles.analysisHero}><Icon name="business-outline" color={COLORS.sand} size={22} /><View style={styles.infoText}><Text style={styles.infoTitle}>{blueprint.name}</Text><Text style={styles.infoBody}>{blueprint.totalBlocks} total blocks · {blueprint.materials.length} material types</Text></View></View>
+              <View style={styles.dimensionRow}><View><Text style={styles.telemetryLabel}>WIDTH</Text><Text style={styles.dimensionValue}>{blueprint.dimensions.width}</Text></View><View><Text style={styles.telemetryLabel}>HEIGHT</Text><Text style={styles.dimensionValue}>{blueprint.dimensions.height}</Text></View><View><Text style={styles.telemetryLabel}>LENGTH</Text><Text style={styles.dimensionValue}>{blueprint.dimensions.length}</Text></View></View>
+              <View style={styles.materialList}>{blueprint.materials.slice(0, 6).map((material) => <View key={material.block} style={styles.materialRow}><Text style={styles.materialName}>{material.block.replace("minecraft:", "")}</Text><Text style={styles.materialQuantity}>{material.quantity} · {material.stacks} stack{material.stacks === 1 ? "" : "s"}</Text></View>)}</View>
+              {buildStage === "land" ? (
+                <>
+                  <View style={styles.landBox}><Icon name="locate-outline" color={COLORS.sand} size={20} /><View style={styles.infoText}><Text style={styles.infoTitle}>Allotted land</Text><Text style={styles.infoBody}>In Minecraft, mark two opposite corners of the area where this structure should stand.</Text></View></View>
+                  <Pressable accessibilityRole="button" onPress={confirmLand} style={styles.sheetPrimaryButton}><Text style={styles.sheetPrimaryText}>LAND IS MARKED</Text><Icon name="arrow-forward" color={COLORS.background} size={18} /></Pressable>
+                </>
+              ) : (
+                <>
+                  <View style={styles.landBox}><Icon name="checkmark-circle" color={COLORS.moss} size={20} /><View style={styles.infoText}><Text style={styles.infoTitle}>Allotted land confirmed</Text><Text style={styles.infoBody}>The build order is ready. BlockMate will ask for final confirmation before starting.</Text></View></View>
+                  <Pressable accessibilityRole="button" onPress={() => setBuildingVisible(false)} style={styles.sheetPrimaryButton}><Text style={styles.sheetPrimaryText}>PREPARE BUILD</Text><Icon name="checkmark" color={COLORS.background} size={18} /></Pressable>
+                </>
+              )}
+              <Pressable accessibilityRole="button" onPress={() => void chooseBlueprint()} style={styles.sheetSecondaryButton}><Text style={styles.sheetSecondaryText}>CHOOSE A DIFFERENT FILE</Text></Pressable>
+            </>
+          ) : null}
         </Sheet>
       ) : null}
 
@@ -489,12 +587,12 @@ export default function HomeScreen() {
       {confirmVisible ? (
         <Sheet onClose={() => setConfirmVisible(false)}>
           <View style={styles.sheetHandle} />
-          <View style={styles.sheetIcon}><Icon name="leaf-outline" color={COLORS.moss} size={30} /></View>
-          <Text style={styles.sheetEyebrow}>START FARMING LOOP</Text>
-          <Text style={styles.sheetTitle}>Ready to send {currentLimit} actions?</Text>
-          <Text style={styles.sheetBody}>Keep your prepared farm and the calibrated Minecraft view visible. BlockMate will pause the prototype loop if a safety signal changes.</Text>
+          <View style={styles.sheetIcon}><Icon name={selectedMode === "build" ? "business-outline" : "leaf-outline"} color={selectedMode === "build" ? COLORS.sand : COLORS.moss} size={30} /></View>
+          <Text style={styles.sheetEyebrow}>{selectedMode === "build" ? "START BLUEPRINT BUILD" : "START FARMING LOOP"}</Text>
+          <Text style={styles.sheetTitle}>Ready to send {selectedMode === "build" ? blueprint?.totalBlocks ?? 0 : currentLimit} {selectedMode === "build" ? "blocks" : "actions"}?</Text>
+          <Text style={styles.sheetBody}>{selectedMode === "build" ? "Keep the confirmed allotted land and calibrated Minecraft view visible. BlockMate will stop if the screen, inventory, or safety state changes." : "Keep your prepared farm and the calibrated Minecraft view visible. BlockMate will pause the prototype loop if a safety signal changes."}</Text>
           <View style={styles.confirmBox}><Text style={styles.confirmBoxLabel}>LIMIT</Text><Text style={styles.confirmBoxValue}>{currentLimit} <Text style={styles.confirmBoxUnit}>{mode.unit}</Text></Text><Text style={styles.confirmBoxHint}>Safe default · emergency STOP stays available</Text></View>
-          <Pressable accessibilityRole="button" onPress={confirmStart} style={({ pressed }) => [styles.sheetPrimaryButton, { opacity: pressed ? 0.82 : 1 }]}><Text style={styles.sheetPrimaryText}>START PROTOTYPE LOOP</Text><Icon name="play" color={COLORS.background} size={18} /></Pressable>
+          <Pressable accessibilityRole="button" onPress={() => void confirmStart()} style={({ pressed }) => [styles.sheetPrimaryButton, { opacity: pressed ? 0.82 : 1 }]}><Text style={styles.sheetPrimaryText}>{selectedMode === "build" ? "START BUILD SEQUENCE" : "START PROTOTYPE LOOP"}</Text><Icon name="play" color={COLORS.background} size={18} /></Pressable>
           <Pressable accessibilityRole="button" onPress={() => setConfirmVisible(false)} style={styles.sheetSecondaryButton}><Text style={styles.sheetSecondaryText}>NOT YET</Text></Pressable>
         </Sheet>
       ) : null}
@@ -556,6 +654,11 @@ const styles = StyleSheet.create({
   inlineStatus: { paddingHorizontal: 6, paddingVertical: 3, borderRadius: 99 },
   inlineStatusText: { fontSize: 8, fontWeight: "900", letterSpacing: 0.8 },
   modePanelBody: { color: COLORS.muted, fontSize: 12, lineHeight: 17, marginTop: 5 },
+  blueprintSummary: { backgroundColor: COLORS.background, borderRadius: 14, borderWidth: 1, borderColor: COLORS.line, padding: 12, gap: 10 },
+  blueprintSummaryTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  blueprintDimensions: { color: COLORS.sand, fontSize: 11, fontWeight: "800" },
+  blueprintButton: { minHeight: 42, borderRadius: 12, backgroundColor: COLORS.sand, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
+  blueprintButtonText: { color: COLORS.background, fontSize: 10, fontWeight: "900", letterSpacing: 0.8 },
   settingRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingTop: 3 },
   settingLabel: { color: COLORS.text, fontSize: 11, fontWeight: "900", letterSpacing: 1.1 },
   settingHint: { color: COLORS.muted, fontSize: 10, marginTop: 4 },
@@ -600,6 +703,18 @@ const styles = StyleSheet.create({
   sheetEyebrow: { color: COLORS.moss, fontSize: 10, fontWeight: "900", letterSpacing: 1.4 },
   sheetTitle: { color: COLORS.text, fontSize: 25, lineHeight: 29, fontWeight: "900", letterSpacing: -0.7 },
   sheetBody: { color: COLORS.muted, fontSize: 13, lineHeight: 19 },
+  formatBox: { backgroundColor: COLORS.background, borderWidth: 1, borderColor: COLORS.line, borderRadius: 14, padding: 12, gap: 7 },
+  formatBoxTitle: { color: COLORS.sand, fontSize: 9, fontWeight: "900", letterSpacing: 1.1 },
+  formatBoxBody: { color: COLORS.muted, fontSize: 11, lineHeight: 15 },
+  formatCode: { color: COLORS.text, fontSize: 10, lineHeight: 15, fontFamily: "monospace" },
+  analysisHero: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: COLORS.background, borderRadius: 14, padding: 12 },
+  dimensionRow: { flexDirection: "row", justifyContent: "space-between", backgroundColor: COLORS.background, borderRadius: 14, padding: 14 },
+  dimensionValue: { color: COLORS.sand, fontSize: 24, fontWeight: "900", marginTop: 3 },
+  materialList: { backgroundColor: COLORS.background, borderRadius: 14, paddingHorizontal: 12 },
+  materialRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: COLORS.line },
+  materialName: { color: COLORS.text, fontSize: 11, fontWeight: "700" },
+  materialQuantity: { color: COLORS.muted, fontSize: 10, fontWeight: "800" },
+  landBox: { flexDirection: "row", gap: 10, alignItems: "flex-start", backgroundColor: `${COLORS.sand}12`, borderRadius: 14, padding: 12 },
   infoList: { gap: 12, paddingVertical: 3 },
   infoItem: { flexDirection: "row", gap: 10, alignItems: "flex-start" },
   infoBullet: { width: 23, height: 23, borderRadius: 8, backgroundColor: `${COLORS.moss}18`, alignItems: "center", justifyContent: "center" },
