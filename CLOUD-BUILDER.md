@@ -1,6 +1,6 @@
 # Free cloud APK builder
 
-BlockMate includes `.github/workflows/build-android.yml`. It uses a temporary GitHub-hosted Linux runner, so there is no always-on server to pay for. The workflow runs `expo prebuild`, compiles the native Kotlin AccessibilityService, and uploads an APK artifact.
+BlockMate includes `.github/workflows/build-android.yml`. It uses a temporary GitHub-hosted Linux runner, so there is no always-on server to pay for. The workflow runs `expo prebuild`, compiles the normal Android companion app, and uploads an APK artifact.
 
 ## One-time setup from a phone
 
