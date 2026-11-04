@@ -1,5 +1,0 @@
-R_DEF: Internal format may change without notice
-local
-string blockmate_accessibility_description
-string blockmate_accessibility_label
-xml blockmate_accessibility_config

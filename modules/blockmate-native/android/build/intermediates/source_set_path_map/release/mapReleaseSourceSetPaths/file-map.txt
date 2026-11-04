@@ -1,7 +1,0 @@
-com.blockmate.nativebridge.blockmate-native-pngs-0 /home/ubuntu/blockmate/modules/blockmate-native/android/build/generated/res/pngs/release
-com.blockmate.nativebridge.blockmate-native-resValues-1 /home/ubuntu/blockmate/modules/blockmate-native/android/build/generated/res/resValues/release
-com.blockmate.nativebridge.blockmate-native-mergeReleaseResources-2 /home/ubuntu/blockmate/modules/blockmate-native/android/build/intermediates/incremental/release/mergeReleaseResources/merged.dir
-com.blockmate.nativebridge.blockmate-native-mergeReleaseResources-3 /home/ubuntu/blockmate/modules/blockmate-native/android/build/intermediates/incremental/release/mergeReleaseResources/stripped.dir
-com.blockmate.nativebridge.blockmate-native-release-4 /home/ubuntu/blockmate/modules/blockmate-native/android/build/intermediates/merged_res/release/mergeReleaseResources
-com.blockmate.nativebridge.blockmate-native-main-5 /home/ubuntu/blockmate/modules/blockmate-native/android/src/main/res
-com.blockmate.nativebridge.blockmate-native-release-6 /home/ubuntu/blockmate/modules/blockmate-native/android/src/release/res

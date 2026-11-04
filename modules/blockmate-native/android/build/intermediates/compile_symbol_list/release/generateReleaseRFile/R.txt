@@ -1,3 +1,0 @@
-int string blockmate_accessibility_description 0x0
-int string blockmate_accessibility_label 0x0
-int xml blockmate_accessibility_config 0x0

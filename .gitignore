@@ -65,3 +65,7 @@ Thumbs.db
 
 # Webdev artifacts (checkpoint zips, migrations, etc.)
 .webdev/
+
+# Generated native Android build output
+android/
+modules/*/android/build/
