@@ -1,0 +1,48 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.blockmate.nativebridge.blockmate-native-mergeReleaseResources-1:/values/values.xml",
+            "map": [
+                {
+                    "source": "/home/ubuntu/blockmate/modules/blockmate-native/android/src/main/res/values/strings.xml",
+                    "from": {
+                        "startLines": "2,1",
+                        "startColumns": "2,2",
+                        "startOffsets": "99,14",
+                        "endColumns": "260,84",
+                        "endOffsets": "357,96"
+                    },
+                    "to": {
+                        "startLines": "2,3",
+                        "startColumns": "4,4",
+                        "startOffsets": "55,318",
+                        "endColumns": "262,86",
+                        "endOffsets": "313,400"
+                    }
+                }
+            ]
+        },
+        {
+            "outputFile": "com.blockmate.nativebridge.blockmate-native-release-3:/values/values.xml",
+            "map": [
+                {
+                    "source": "/home/ubuntu/blockmate/modules/blockmate-native/android/src/main/res/values/strings.xml",
+                    "from": {
+                        "startLines": "2,1",
+                        "startColumns": "2,2",
+                        "startOffsets": "99,14",
+                        "endColumns": "260,84",
+                        "endOffsets": "357,96"
+                    },
+                    "to": {
+                        "startLines": "2,3",
+                        "startColumns": "4,4",
+                        "startOffsets": "55,318",
+                        "endColumns": "262,86",
+                        "endOffsets": "313,400"
+                    }
+                }
+            ]
+        }
+    ]
+}

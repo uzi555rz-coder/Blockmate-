@@ -1,0 +1,4 @@
+com.blockmate.nativebridge
+string blockmate_accessibility_description
+string blockmate_accessibility_label
+xml blockmate_accessibility_config

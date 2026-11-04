@@ -1,0 +1,4 @@
+<resources>
+  <string name="blockmate_accessibility_label">BlockMate Minecraft controls</string>
+  <string name="blockmate_accessibility_description">BlockMate uses calibrated touch gestures to help you perform a user-selected, fixed Minecraft task. It reads only the Minecraft screen while the automation is running and can be stopped at any time.</string>
+</resources>

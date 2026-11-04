@@ -21,6 +21,7 @@ import {
   type AutomationModeId,
   type RunState,
 } from "@/lib/blockmate";
+import { armBridge, getBridgeStatus, isNativeBridgeAvailable, openAccessibilitySettings, stopBridge, type BlockMateNativeStatus } from "@/lib/blockmate-native";
 import { analyzeBlueprint, type BlueprintAnalysis } from "@/lib/building";
 
 const COLORS = {
@@ -137,6 +138,7 @@ export default function HomeScreen() {
   const [actionCount, setActionCount] = useState(0);
   const [toast, setToast] = useState("Ready when you are.");
   const [phase, setPhase] = useState("Waiting for calibration");
+  const [bridgeStatus, setBridgeStatus] = useState<BlockMateNativeStatus | null>(null);
   const [blueprint, setBlueprint] = useState<BlueprintAnalysis | null>(null);
   const [buildStage, setBuildStage] = useState<"file" | "land" | "ready">("file");
 
@@ -173,8 +175,8 @@ export default function HomeScreen() {
     if (actionCount >= currentLimit) {
       const timer = setTimeout(() => {
         setRunState("stopped");
-        setToast("Guide complete. No Minecraft actions were sent.");
-        setPhase("Companion checklist ready");
+        setToast("Run complete. Farming loop stopped safely.");
+        setPhase("Farm anchor ready");
       }, 0);
       return () => clearTimeout(timer);
     }
@@ -189,6 +191,21 @@ export default function HomeScreen() {
     setCalibrationStep(1);
     setCalibrationChecks([false, false, false]);
     setCalibrationVisible(true);
+    void refreshBridgeStatus();
+  }
+
+  async function refreshBridgeStatus() {
+    const status = await getBridgeStatus();
+    setBridgeStatus(status);
+  }
+
+  async function openNativeAccessibilitySettings() {
+    try {
+      await openAccessibilitySettings();
+      setToast("Enable BlockMate Minecraft controls, then return here.");
+    } catch {
+      setToast("Native Android bridge is available only in the custom APK build.");
+    }
   }
 
   async function chooseBlueprint() {
@@ -226,8 +243,8 @@ export default function HomeScreen() {
   function completeCalibration() {
     setCalibrated(true);
     setRunState("calibrated");
-    setPhase("Companion checklist ready");
-    setToast("Setup saved. BlockMate will show guidance only; it will not touch Minecraft.");
+    setPhase("Farm anchor ready");
+    setToast("Calibration saved. Safety checks are armed.");
     setCalibrationVisible(false);
     void AsyncStorage.setItem("blockmate:calibrated", "true");
   }
@@ -254,27 +271,53 @@ export default function HomeScreen() {
   }
 
   async function confirmStart() {
+    if (isNativeBridgeAvailable()) {
+      try {
+        const status = await armBridge();
+        if (!status.minecraftForeground) {
+          setToast("Open Minecraft Bedrock first; no gesture was sent.");
+          return;
+        }
+      } catch {
+        setToast("Enable BlockMate Minecraft controls before starting.");
+        return;
+      }
+    }
     setConfirmVisible(false);
     setActionCount(0);
     setPhase(selectedMode === "build" ? "Checking allotted land" : "Checking plot");
-    setToast(selectedMode === "build" ? "Build guide ready. Follow each block step in Minecraft." : "Manual checklist running. BlockMate will not send Minecraft actions.");
+    setToast(selectedMode === "build" ? "Build sequence running. Keep the allotted land visible in Minecraft." : "Prototype loop running. Keep Minecraft in the calibrated view.");
     setRunState("running");
   }
 
   async function pauseRun() {
+    if (isNativeBridgeAvailable()) await stopBridge();
     setRunState("paused");
-    setToast("Guide paused. Your world is unchanged.");
+    setToast("Automation paused. Your world is safe.");
   }
 
   async function resumeRun() {
+    if (isNativeBridgeAvailable()) {
+      try {
+        const status = await armBridge();
+        if (!status.minecraftForeground) {
+          setToast("Open Minecraft Bedrock first; automation remains paused.");
+          return;
+        }
+      } catch {
+        setToast("Enable BlockMate Minecraft controls before resuming.");
+        return;
+      }
+    }
     setRunState("running");
-    setToast("Guide resumed. Continue following the manual steps.");
+    setToast("Automation resumed. Safety checks remain armed.");
   }
 
   async function stopRun() {
+    if (isNativeBridgeAvailable()) await stopBridge();
     setRunState(calibrated ? "stopped" : "idle");
-    setPhase(calibrated ? "Companion checklist ready" : "Waiting for setup");
-    setToast("Guide stopped. No Minecraft actions were sent.");
+    setPhase(calibrated ? "Farm anchor ready" : "Waiting for calibration");
+    setToast("Emergency stop received. No more actions will be sent.");
   }
 
   function adjustLimit(delta: number) {
@@ -321,7 +364,7 @@ export default function HomeScreen() {
           <View style={styles.statusCardTop}>
             <View>
               <Text style={styles.cardEyebrow}>CURRENT RUN</Text>
-              <Text style={styles.statusTitle}>{isRunning ? "Manual guide" : mode.label}</Text>
+              <Text style={styles.statusTitle}>{isRunning ? "Farming loop" : mode.label}</Text>
             </View>
             <StatePill state={runState} />
           </View>
@@ -342,7 +385,7 @@ export default function HomeScreen() {
           <Text style={styles.toast}>{toast}</Text>
         </View>
 
-        <SectionLabel right="6 MODES">COMPANION DECK</SectionLabel>
+        <SectionLabel right="6 MODES">AUTOMATION DECK</SectionLabel>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.modeRail}>
           {BLOCKMATE_MODES.map((item) => (
             <ModeCard key={item.id} id={item.id} selected={selectedMode === item.id} onPress={() => setSelectedMode(item.id)} />
@@ -405,8 +448,8 @@ export default function HomeScreen() {
             <View style={styles.calibrationCopy}>
               <Icon name={calibrated ? "checkmark-circle" : "locate-outline"} color={calibrated ? COLORS.moss : COLORS.sand} size={20} />
               <View>
-                <Text style={styles.calibrationTitle}>{calibrated ? "Companion setup saved" : "Setup required"}</Text>
-                <Text style={styles.calibrationDetail}>{calibrated ? "World, materials, and build area checklist saved" : "Prepare the world and materials before following the guide"}</Text>
+                <Text style={styles.calibrationTitle}>{calibrated ? "Controls calibrated" : "Calibration required"}</Text>
+                <Text style={styles.calibrationDetail}>{calibrated ? "Portrait layout · farm anchor saved" : "Match touch targets before sending actions"}</Text>
               </View>
             </View>
             <Pressable accessibilityRole="button" onPress={beginCalibration} style={({ pressed }) => [styles.textButton, { opacity: pressed ? 0.6 : 1 }]}>
@@ -428,7 +471,7 @@ export default function HomeScreen() {
             <SafetyChip key={rule.label} {...rule} />
           ))}
         </View>
-        <Text style={styles.disclaimer}>BlockMate never edits your world, sends Minecraft gestures, or asks for a Microsoft password. It studies building files and gives you a safe manual plan to follow in your unmodified Bedrock world.</Text>
+        <Text style={styles.disclaimer}>BlockMate never edits your world or asks for a Microsoft password. The Android gesture bridge is included in the custom APK build; the Web preview remains a simulation.</Text>
 
         <View style={styles.controlShelf}>
           <Pressable accessibilityRole="button" accessibilityLabel="Stop automation" onPress={stopRun} style={({ pressed }) => [styles.stopButton, { opacity: pressed ? 0.72 : 1 }]}>
@@ -437,7 +480,7 @@ export default function HomeScreen() {
           </Pressable>
           <Pressable accessibilityRole="button" disabled={!isActiveMode || runState === "safety_stop"} onPress={isPaused ? resumeRun : isRunning ? pauseRun : startRun} style={({ pressed }) => [styles.startButton, !isActiveMode && styles.buttonDisabled, { opacity: pressed ? 0.8 : 1 }]}>
             <Icon name={isPaused ? "play" : isRunning ? "pause" : "play"} color={COLORS.background} size={20} />
-            <Text style={styles.startButtonText}>{isPaused ? "RESUME" : isRunning ? "PAUSE" : selectedMode === "build" ? "START BUILD GUIDE" : isActiveMode ? "START FARMING GUIDE" : "PLANNED MODE"}</Text>
+            <Text style={styles.startButtonText}>{isPaused ? "RESUME" : isRunning ? "PAUSE" : selectedMode === "build" ? "START BUILD" : isActiveMode ? "START FARMING" : "PLANNED MODE"}</Text>
           </Pressable>
         </View>
       </ScrollView>
@@ -448,7 +491,7 @@ export default function HomeScreen() {
           <View style={styles.sheetIcon}><Icon name="shield-checkmark-outline" color={COLORS.moss} size={30} /></View>
           <Text style={styles.sheetEyebrow}>BEFORE YOU RUN</Text>
           <Text style={styles.sheetTitle}>A careful companion, not a Minecraft mod.</Text>
-          <Text style={styles.sheetBody}>BlockMate is a normal companion app for your unmodified Bedrock world. It imports building files, calculates materials and dimensions, and gives you manual step-by-step guidance. It does not request Accessibility access or control Minecraft.</Text>
+          <Text style={styles.sheetBody}>BlockMate is designed around your unmodified Bedrock world. The prototype needs a calibrated portrait layout and, on Android, Accessibility plus screen-recognition access to send and verify gestures.</Text>
           <View style={styles.infoList}>
             {[
               ["No world edits", "No add-ons, behavior packs, or server changes."],
@@ -507,12 +550,23 @@ export default function HomeScreen() {
         <Sheet onClose={() => setCalibrationVisible(false)}>
           <View style={styles.sheetHandle} />
           <View style={styles.sheetTitleRow}><View><Text style={styles.sheetEyebrow}>SETUP / {calibrationStep} OF 3</Text><Text style={styles.sheetTitle}>Calibrate your controls</Text></View><Pressable onPress={() => setCalibrationVisible(false)}><Icon name="close" color={COLORS.muted} size={24} /></Pressable></View>
-          <Text style={styles.sheetBody}>Use this short setup to prepare a safe manual plan. BlockMate does not read your Minecraft screen and does not send touches.</Text>
+          <Text style={styles.sheetBody}>Keep Minecraft visible in landscape at 2400×1080. Complete each check so the native bridge knows where to look and where to tap.</Text>
+          <View style={styles.bridgeBox}>
+            <View style={styles.bridgeBoxHeader}>
+              <Icon name={bridgeStatus?.serviceEnabled ? "checkmark-circle" : "hardware-chip-outline"} color={bridgeStatus?.serviceEnabled ? COLORS.moss : COLORS.sand} size={18} />
+              <Text style={styles.bridgeBoxTitle}>{bridgeStatus?.serviceEnabled ? "Accessibility service detected" : "Android bridge setup"}</Text>
+            </View>
+            <Text style={styles.bridgeBoxDetail}>{bridgeStatus?.serviceEnabled ? `${bridgeStatus.displayWidth}×${bridgeStatus.displayHeight} display · ${bridgeStatus.lastStatus}` : "The custom APK must be granted Accessibility access before it can send a gesture."}</Text>
+            <View style={styles.bridgeBoxActions}>
+              <Pressable accessibilityRole="button" onPress={openNativeAccessibilitySettings} style={styles.bridgeButton}><Text style={styles.bridgeButtonText}>OPEN SETTINGS</Text></Pressable>
+              <Pressable accessibilityRole="button" onPress={() => void refreshBridgeStatus()} style={styles.bridgeButton}><Text style={styles.bridgeButtonText}>REFRESH</Text></Pressable>
+            </View>
+          </View>
           <View style={styles.calibrationSteps}>
             {[
-              ["World ready", "Open your unmodified Bedrock survival world."],
-              ["Materials ready", "Confirm the required blocks or tools are available."],
-              ["Build area", "Confirm the farm plot or allotted building land yourself."],
+              ["Touch layout", "Confirm the movement pad and action button are visible."],
+              ["Screen regions", "Keep the health, hotbar, and inventory areas on screen."],
+              ["Farm anchor", "Stand at the first crop row with a tool selected."],
             ].map(([title, body], index) => {
               const checked = calibrationChecks[index];
               return (
@@ -536,9 +590,9 @@ export default function HomeScreen() {
           <View style={styles.sheetIcon}><Icon name={selectedMode === "build" ? "business-outline" : "leaf-outline"} color={selectedMode === "build" ? COLORS.sand : COLORS.moss} size={30} /></View>
           <Text style={styles.sheetEyebrow}>{selectedMode === "build" ? "START BLUEPRINT BUILD" : "START FARMING LOOP"}</Text>
           <Text style={styles.sheetTitle}>Ready to send {selectedMode === "build" ? blueprint?.totalBlocks ?? 0 : currentLimit} {selectedMode === "build" ? "blocks" : "actions"}?</Text>
-          <Text style={styles.sheetBody}>{selectedMode === "build" ? "BlockMate has prepared the dimensions, materials, and manual block order. It will not control Minecraft; follow the guide yourself." : "BlockMate will show a manual checklist only. It will not read the screen, send gestures, or change your world."}</Text>
+          <Text style={styles.sheetBody}>{selectedMode === "build" ? "Keep the confirmed allotted land and calibrated Minecraft view visible. BlockMate will stop if the screen, inventory, or safety state changes." : "Keep your prepared farm and the calibrated Minecraft view visible. BlockMate will pause the prototype loop if a safety signal changes."}</Text>
           <View style={styles.confirmBox}><Text style={styles.confirmBoxLabel}>LIMIT</Text><Text style={styles.confirmBoxValue}>{currentLimit} <Text style={styles.confirmBoxUnit}>{mode.unit}</Text></Text><Text style={styles.confirmBoxHint}>Safe default · emergency STOP stays available</Text></View>
-          <Pressable accessibilityRole="button" onPress={() => void confirmStart()} style={({ pressed }) => [styles.sheetPrimaryButton, { opacity: pressed ? 0.82 : 1 }]}><Text style={styles.sheetPrimaryText}>{selectedMode === "build" ? "START BUILD GUIDE" : "START CHECKLIST"}</Text><Icon name="play" color={COLORS.background} size={18} /></Pressable>
+          <Pressable accessibilityRole="button" onPress={() => void confirmStart()} style={({ pressed }) => [styles.sheetPrimaryButton, { opacity: pressed ? 0.82 : 1 }]}><Text style={styles.sheetPrimaryText}>{selectedMode === "build" ? "START BUILD SEQUENCE" : "START PROTOTYPE LOOP"}</Text><Icon name="play" color={COLORS.background} size={18} /></Pressable>
           <Pressable accessibilityRole="button" onPress={() => setConfirmVisible(false)} style={styles.sheetSecondaryButton}><Text style={styles.sheetSecondaryText}>NOT YET</Text></Pressable>
         </Sheet>
       ) : null}

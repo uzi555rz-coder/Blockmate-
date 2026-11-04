@@ -1,0 +1,6 @@
+[
+    {
+        "merged": "com.blockmate.nativebridge.blockmate-native-release-3:/xml/blockmate_accessibility_config.xml",
+        "source": "com.blockmate.nativebridge.blockmate-native-main-4:/xml/blockmate_accessibility_config.xml"
+    }
+]
