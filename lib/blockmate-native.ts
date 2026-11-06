@@ -12,6 +12,14 @@ export type BlockMateNativeStatus = {
   lastStatus: string;
 };
 
+export type BlockMateScreenCaptureStatus = {
+  capturing: boolean;
+  lastStatus: string;
+  lastCapturePath?: string | null;
+  width: number;
+  height: number;
+};
+
 type BlockMateNativeModule = {
   isAccessibilityEnabled(): Promise<boolean>;
   openAccessibilitySettings(): Promise<void>;
@@ -26,6 +34,9 @@ type BlockMateNativeModule = {
     endY: number,
     durationMs: number,
   ): Promise<BlockMateNativeStatus>;
+  requestScreenCapture(): Promise<BlockMateScreenCaptureStatus>;
+  getScreenCaptureStatus(): Promise<BlockMateScreenCaptureStatus>;
+  stopScreenCapture(): Promise<BlockMateScreenCaptureStatus>;
 };
 
 const nativeModule = requireOptionalNativeModule<BlockMateNativeModule>("BlockMateNative");
@@ -91,4 +102,19 @@ export async function swipeReference(
 ) {
   if (!nativeModule) throw new Error("Native bridge unavailable");
   return nativeModule.swipeReference(startX, startY, endX, endY, durationMs);
+}
+
+export async function requestScreenCapture() {
+  if (!nativeModule) throw new Error("Screen capture is available only in the Android APK.");
+  return nativeModule.requestScreenCapture();
+}
+
+export async function getScreenCaptureStatus(): Promise<BlockMateScreenCaptureStatus> {
+  if (!nativeModule) return { capturing: false, lastStatus: "native_bridge_unavailable", width: 0, height: 0 };
+  return nativeModule.getScreenCaptureStatus();
+}
+
+export async function stopScreenCapture() {
+  if (!nativeModule) return getScreenCaptureStatus();
+  return nativeModule.stopScreenCapture();
 }

@@ -21,7 +21,7 @@ import {
   type AutomationModeId,
   type RunState,
 } from "@/lib/blockmate";
-import { armBridge, getBridgeStatus, isNativeBridgeAvailable, openAccessibilitySettings, stopBridge, type BlockMateNativeStatus } from "@/lib/blockmate-native";
+import { armBridge, getBridgeStatus, getScreenCaptureStatus, isNativeBridgeAvailable, openAccessibilitySettings, requestScreenCapture, stopBridge, type BlockMateNativeStatus, type BlockMateScreenCaptureStatus } from "@/lib/blockmate-native";
 import { analyzeBlueprint, type BlueprintAnalysis } from "@/lib/building";
 
 const COLORS = {
@@ -139,6 +139,7 @@ export default function HomeScreen() {
   const [toast, setToast] = useState("Ready when you are.");
   const [phase, setPhase] = useState("Waiting for calibration");
   const [bridgeStatus, setBridgeStatus] = useState<BlockMateNativeStatus | null>(null);
+  const [screenCaptureStatus, setScreenCaptureStatus] = useState<BlockMateScreenCaptureStatus | null>(null);
   const [blueprint, setBlueprint] = useState<BlueprintAnalysis | null>(null);
   const [buildStage, setBuildStage] = useState<"file" | "land" | "ready">("file");
 
@@ -192,11 +193,27 @@ export default function HomeScreen() {
     setCalibrationChecks([false, false, false]);
     setCalibrationVisible(true);
     void refreshBridgeStatus();
+    void refreshScreenCaptureStatus();
   }
 
   async function refreshBridgeStatus() {
     const status = await getBridgeStatus();
     setBridgeStatus(status);
+  }
+
+  async function refreshScreenCaptureStatus() {
+    const status = await getScreenCaptureStatus();
+    setScreenCaptureStatus(status);
+  }
+
+  async function captureMinecraftScreen() {
+    try {
+      const status = await requestScreenCapture();
+      setScreenCaptureStatus(status);
+      setToast("Android capture consent requested. BlockMate will save one local frame for recognition.");
+    } catch {
+      setToast("Screen recognition is available only in the Android APK.");
+    }
   }
 
   async function openNativeAccessibilitySettings() {
@@ -560,6 +577,15 @@ export default function HomeScreen() {
             <View style={styles.bridgeBoxActions}>
               <Pressable accessibilityRole="button" onPress={openNativeAccessibilitySettings} style={styles.bridgeButton}><Text style={styles.bridgeButtonText}>OPEN SETTINGS</Text></Pressable>
               <Pressable accessibilityRole="button" onPress={() => void refreshBridgeStatus()} style={styles.bridgeButton}><Text style={styles.bridgeButtonText}>REFRESH</Text></Pressable>
+            </View>
+            <View style={styles.bridgeBoxHeader}>
+              <Icon name={screenCaptureStatus?.lastStatus === "screen_capture_ready" ? "checkmark-circle" : "scan-outline"} color={screenCaptureStatus?.lastStatus === "screen_capture_ready" ? COLORS.moss : COLORS.blue} size={18} />
+              <Text style={styles.bridgeBoxTitle}>{screenCaptureStatus?.lastStatus === "screen_capture_ready" ? "Screen frame ready" : "Screen recognition"}</Text>
+            </View>
+            <Text style={styles.bridgeBoxDetail}>{screenCaptureStatus?.lastStatus === "screen_capture_ready" ? `${screenCaptureStatus.width}×${screenCaptureStatus.height} local frame saved` : "Capture one Minecraft frame with Android’s visible consent prompt. No hidden recording."}</Text>
+            <View style={styles.bridgeBoxActions}>
+              <Pressable accessibilityRole="button" onPress={() => void captureMinecraftScreen()} style={styles.bridgeButton}><Text style={styles.bridgeButtonText}>CAPTURE ONE FRAME</Text></Pressable>
+              <Pressable accessibilityRole="button" onPress={() => void refreshScreenCaptureStatus()} style={styles.bridgeButton}><Text style={styles.bridgeButtonText}>REFRESH</Text></Pressable>
             </View>
           </View>
           <View style={styles.calibrationSteps}>

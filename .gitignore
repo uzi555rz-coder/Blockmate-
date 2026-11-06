@@ -67,5 +67,5 @@ Thumbs.db
 .webdev/
 
 # Generated native Android build output
-android/
+/android/
 modules/*/android/build/
