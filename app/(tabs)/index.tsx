@@ -21,7 +21,6 @@ import {
   type AutomationModeId,
   type RunState,
 } from "@/lib/blockmate";
-import { armBridge, getBridgeStatus, getScreenCaptureStatus, isNativeBridgeAvailable, openAccessibilitySettings, requestScreenCapture, stopBridge, type BlockMateNativeStatus, type BlockMateScreenCaptureStatus } from "@/lib/blockmate-native";
 import { analyzeBlueprint, buildOrder, type BlueprintAnalysis } from "@/lib/building";
 
 const COLORS = {
@@ -138,8 +137,6 @@ export default function HomeScreen() {
   const [actionCount, setActionCount] = useState(0);
   const [toast, setToast] = useState("Ready when you are.");
   const [phase, setPhase] = useState("Waiting for calibration");
-  const [bridgeStatus, setBridgeStatus] = useState<BlockMateNativeStatus | null>(null);
-  const [screenCaptureStatus, setScreenCaptureStatus] = useState<BlockMateScreenCaptureStatus | null>(null);
   const [blueprint, setBlueprint] = useState<BlueprintAnalysis | null>(null);
   const [buildStage, setBuildStage] = useState<"file" | "land" | "ready">("file");
   const [buildAssistVisible, setBuildAssistVisible] = useState(false);
@@ -208,37 +205,6 @@ export default function HomeScreen() {
     setCalibrationStep(1);
     setCalibrationChecks([false, false, false]);
     setCalibrationVisible(true);
-    void refreshBridgeStatus();
-    void refreshScreenCaptureStatus();
-  }
-
-  async function refreshBridgeStatus() {
-    const status = await getBridgeStatus();
-    setBridgeStatus(status);
-  }
-
-  async function refreshScreenCaptureStatus() {
-    const status = await getScreenCaptureStatus();
-    setScreenCaptureStatus(status);
-  }
-
-  async function captureMinecraftScreen() {
-    try {
-      const status = await requestScreenCapture();
-      setScreenCaptureStatus(status);
-      setToast("Android capture consent requested. BlockMate will save one local frame for recognition.");
-    } catch {
-      setToast("Screen recognition is available only in the Android APK.");
-    }
-  }
-
-  async function openNativeAccessibilitySettings() {
-    try {
-      await openAccessibilitySettings();
-      setToast("Enable BlockMate Minecraft controls, then return here.");
-    } catch {
-      setToast("Native Android bridge is available only in the custom APK build.");
-    }
   }
 
   async function chooseBlueprint() {
@@ -319,18 +285,6 @@ export default function HomeScreen() {
   }
 
   async function confirmStart() {
-    if (isNativeBridgeAvailable()) {
-      try {
-        const status = await armBridge();
-        if (!status.minecraftForeground) {
-          setToast("Open Minecraft Bedrock first; no gesture was sent.");
-          return;
-        }
-      } catch {
-        setToast("Enable BlockMate Minecraft controls before starting.");
-        return;
-      }
-    }
     setConfirmVisible(false);
     setActionCount(0);
     setPhase(selectedMode === "build" ? "Checking allotted land" : "Checking plot");
@@ -339,30 +293,16 @@ export default function HomeScreen() {
   }
 
   async function pauseRun() {
-    if (isNativeBridgeAvailable()) await stopBridge();
     setRunState("paused");
     setToast("Automation paused. Your world is safe.");
   }
 
   async function resumeRun() {
-    if (isNativeBridgeAvailable()) {
-      try {
-        const status = await armBridge();
-        if (!status.minecraftForeground) {
-          setToast("Open Minecraft Bedrock first; automation remains paused.");
-          return;
-        }
-      } catch {
-        setToast("Enable BlockMate Minecraft controls before resuming.");
-        return;
-      }
-    }
     setRunState("running");
     setToast("Automation resumed. Safety checks remain armed.");
   }
 
   async function stopRun() {
-    if (isNativeBridgeAvailable()) await stopBridge();
     setRunState(calibrated ? "stopped" : "idle");
     setPhase(calibrated ? "Farm anchor ready" : "Waiting for calibration");
     setToast("Emergency stop received. No more actions will be sent.");
@@ -525,7 +465,7 @@ export default function HomeScreen() {
             <SafetyChip key={rule.label} {...rule} />
           ))}
         </View>
-        <Text style={styles.disclaimer}>BlockMate never edits your world or asks for a Microsoft password. The Android gesture bridge is included in the custom APK build; the Web preview remains a simulation.</Text>
+        <Text style={styles.disclaimer}>BlockMate never edits your world, sends Minecraft touches, captures your screen, or asks for a Microsoft password. It is a local manual guide.</Text>
 
         <View style={styles.controlShelf}>
           <Pressable accessibilityRole="button" accessibilityLabel="Stop automation" onPress={stopRun} style={({ pressed }) => [styles.stopButton, { opacity: pressed ? 0.72 : 1 }]}>
@@ -545,7 +485,7 @@ export default function HomeScreen() {
           <View style={styles.sheetIcon}><Icon name="shield-checkmark-outline" color={COLORS.moss} size={30} /></View>
           <Text style={styles.sheetEyebrow}>BEFORE YOU RUN</Text>
           <Text style={styles.sheetTitle}>A careful companion, not a Minecraft mod.</Text>
-          <Text style={styles.sheetBody}>BlockMate is designed around your unmodified Bedrock world. The prototype needs a calibrated portrait layout and, on Android, Accessibility plus screen-recognition access to send and verify gestures.</Text>
+          <Text style={styles.sheetBody}>BlockMate is designed around your unmodified Bedrock world. It is a normal companion app: no Accessibility permission, screen capture, overlay permission, Minecraft modification, or account credentials are required.</Text>
           <View style={styles.infoList}>
             {[
               ["No world edits", "No add-ons, behavior packs, or server changes."],
@@ -641,27 +581,7 @@ export default function HomeScreen() {
         <Sheet onClose={() => setCalibrationVisible(false)}>
           <View style={styles.sheetHandle} />
           <View style={styles.sheetTitleRow}><View><Text style={styles.sheetEyebrow}>SETUP / {calibrationStep} OF 3</Text><Text style={styles.sheetTitle}>Calibrate your controls</Text></View><Pressable onPress={() => setCalibrationVisible(false)}><Icon name="close" color={COLORS.muted} size={24} /></Pressable></View>
-          <Text style={styles.sheetBody}>Keep Minecraft visible in landscape at 2400×1080. Complete each check so the native bridge knows where to look and where to tap.</Text>
-          <View style={styles.bridgeBox}>
-            <View style={styles.bridgeBoxHeader}>
-              <Icon name={bridgeStatus?.serviceEnabled ? "checkmark-circle" : "hardware-chip-outline"} color={bridgeStatus?.serviceEnabled ? COLORS.moss : COLORS.sand} size={18} />
-              <Text style={styles.bridgeBoxTitle}>{bridgeStatus?.serviceEnabled ? "Accessibility service detected" : "Android bridge setup"}</Text>
-            </View>
-            <Text style={styles.bridgeBoxDetail}>{bridgeStatus?.serviceEnabled ? `${bridgeStatus.displayWidth}×${bridgeStatus.displayHeight} display · ${bridgeStatus.lastStatus}` : "The custom APK must be granted Accessibility access before it can send a gesture."}</Text>
-            <View style={styles.bridgeBoxActions}>
-              <Pressable accessibilityRole="button" onPress={openNativeAccessibilitySettings} style={styles.bridgeButton}><Text style={styles.bridgeButtonText}>OPEN SETTINGS</Text></Pressable>
-              <Pressable accessibilityRole="button" onPress={() => void refreshBridgeStatus()} style={styles.bridgeButton}><Text style={styles.bridgeButtonText}>REFRESH</Text></Pressable>
-            </View>
-            <View style={styles.bridgeBoxHeader}>
-              <Icon name={screenCaptureStatus?.lastStatus === "screen_capture_ready" ? "checkmark-circle" : "scan-outline"} color={screenCaptureStatus?.lastStatus === "screen_capture_ready" ? COLORS.moss : COLORS.blue} size={18} />
-              <Text style={styles.bridgeBoxTitle}>{screenCaptureStatus?.lastStatus === "screen_capture_ready" ? "Screen frame ready" : "Screen recognition"}</Text>
-            </View>
-            <Text style={styles.bridgeBoxDetail}>{screenCaptureStatus?.lastStatus === "screen_capture_ready" ? `${screenCaptureStatus.width}×${screenCaptureStatus.height} local frame saved` : "Capture one Minecraft frame with Android’s visible consent prompt. No hidden recording."}</Text>
-            <View style={styles.bridgeBoxActions}>
-              <Pressable accessibilityRole="button" onPress={() => void captureMinecraftScreen()} style={styles.bridgeButton}><Text style={styles.bridgeButtonText}>CAPTURE ONE FRAME</Text></Pressable>
-              <Pressable accessibilityRole="button" onPress={() => void refreshScreenCaptureStatus()} style={styles.bridgeButton}><Text style={styles.bridgeButtonText}>REFRESH</Text></Pressable>
-            </View>
-          </View>
+          <Text style={styles.sheetBody}>BlockMate is now a normal companion app. It does not request Accessibility access, screen capture, overlays, or control over Minecraft. Use the guide beside Minecraft and confirm each step manually.</Text>
           <View style={styles.calibrationSteps}>
             {[
               ["Touch layout", "Confirm the movement pad and action button are visible."],

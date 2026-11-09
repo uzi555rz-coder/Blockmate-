@@ -9,14 +9,14 @@
 
 ## 2. Farming prototype run
 - [in progress] Farming and replanting is represented as a manual checklist and planning loop; the companion app never sends Minecraft actions.
-- [complete] The Android Accessibility bridge was removed so the companion APK has no AccessibilityService declaration and can be installed as a normal app.
-- [ ] The Android APK is built and installed on the OnePlus 8 running Android 13, Accessibility is enabled, and one harmless tap plus one joystick swipe are verified in Minecraft Bedrock Beta 1.21.100.23.
-- [ ] Screenshot recognition and the fixed farming state machine are connected after the harmless gesture test succeeds; AI planning remains constrained to user-selected actions and safety rules.
-- [ ] Complete the physical APK/device procedure in `DEVICE-TEST.md`; the sandbox cannot claim this native-only result without the OnePlus 8 test.
+- [complete] The Android Accessibility and MediaProjection paths were removed so the companion APK is a normal permission-free guide app.
+- [ ] Build and install the normal companion APK on the OnePlus 8 running Android 13, then verify JSON import and manual guide navigation in Minecraft Bedrock Beta 1.21.100.23.
+- [complete] Screenshot recognition, automatic gestures, and the continuous farming state machine are excluded from this permission-free product scope.
+- [ ] Complete the physical APK/device procedure in `DEVICE-TEST.md`; the sandbox cannot claim this device-only result without the OnePlus 8 test.
 - [complete] Building mode imports a JSON blueprint, calculates dimensions and material quantities, confirms allotted land, and presents a manual block order. Automatic placement is intentionally outside the companion scope.
 
 ## 3. Calibration and permissions
-- [in progress] The app includes a guided calibration flow for matching BlockMate to the phone's Minecraft Bedrock control layout, touch targets, orientation, and relevant screen regions.
+- [in progress] The app includes a manual setup flow for matching BlockMate's guide to the phone's Minecraft Bedrock orientation, build area, and relevant screen regions.
 - [complete] Onboarding explains that BlockMate is a normal companion app with no Accessibility access, screen recognition, Minecraft modification, or Microsoft account password requirement.
 
 ## 4. Safety-first controls and run state

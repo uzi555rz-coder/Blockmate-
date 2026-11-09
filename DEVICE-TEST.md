@@ -1,29 +1,23 @@
-# BlockMate Android completion test
+# BlockMate Android companion test
 
 Target: OnePlus 8, Android 13, Minecraft Bedrock Beta 1.21.100.23, landscape 2400×1080.
 
-## Build
+## Install
 
-Use the project Dashboard Android build action to create an APK from the accepted checkpoint. The sandbox does not run Expo/EAS release builds.
+1. Build the APK from the accepted project checkpoint.
+2. Install the APK on the OnePlus 8.
+3. Open BlockMate and confirm Android does not request Accessibility, screen-capture, overlay, microphone, or Minecraft-control access.
+4. Open Building mode and import a JSON blueprint.
+5. Review dimensions and materials, mark the allotted land manually in Minecraft, and open the Side-by-side Guide.
 
-## Install and permission setup
+## Manual guide test
 
-1. Install the APK on the OnePlus 8.
-2. Open BlockMate once.
-3. Open the calibration sheet and tap **OPEN SETTINGS**.
-4. Enable **BlockMate Minecraft controls** under Android Accessibility settings.
-5. Return to BlockMate and tap **REFRESH**. The status should show the Accessibility service as detected.
-6. Open Minecraft Bedrock Beta and enter a disposable copy of the survival world in landscape.
+1. Keep Minecraft open beside or behind BlockMate.
+2. Move through the guide layers with the back and forward buttons.
+3. Confirm the current Y-level and layer block count update.
+4. Change the opacity preset.
+5. Place one block manually in Minecraft and tap **MARK BLOCK PLACED**.
+6. Confirm progress advances and **RESET PROGRESS** returns it to zero.
+7. Close and reopen the guide. The app must not claim to have placed blocks or sent gestures.
 
-## Safe gesture test
-
-1. Keep the player away from a cliff, lava, mobs, and valuable redstone.
-2. Set a low farming action limit.
-3. Complete the three calibration checks.
-4. Start the farming prototype.
-5. Confirm that the status reports Minecraft in the foreground.
-6. Verify only one harmless calibrated gesture, then press **STOP**.
-7. Background Minecraft or open another app. The service must stop accepting gestures when Minecraft leaves the foreground.
-8. Confirm that Pause calls the native stop path and Resume requires Minecraft to be foreground again.
-
-Do not enable a continuous farming routine until the harmless tap and joystick swipe have been confirmed on the physical device.
+BlockMate is intentionally a normal companion app. It does not automate Minecraft, read Minecraft screen pixels, draw over other apps, or request a Microsoft password.
