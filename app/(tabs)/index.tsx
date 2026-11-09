@@ -22,7 +22,7 @@ import {
   type RunState,
 } from "@/lib/blockmate";
 import { armBridge, getBridgeStatus, getScreenCaptureStatus, isNativeBridgeAvailable, openAccessibilitySettings, requestScreenCapture, stopBridge, type BlockMateNativeStatus, type BlockMateScreenCaptureStatus } from "@/lib/blockmate-native";
-import { analyzeBlueprint, type BlueprintAnalysis } from "@/lib/building";
+import { analyzeBlueprint, buildOrder, type BlueprintAnalysis } from "@/lib/building";
 
 const COLORS = {
   background: "#101713",
@@ -142,6 +142,10 @@ export default function HomeScreen() {
   const [screenCaptureStatus, setScreenCaptureStatus] = useState<BlockMateScreenCaptureStatus | null>(null);
   const [blueprint, setBlueprint] = useState<BlueprintAnalysis | null>(null);
   const [buildStage, setBuildStage] = useState<"file" | "land" | "ready">("file");
+  const [buildAssistVisible, setBuildAssistVisible] = useState(false);
+  const [assistLayerIndex, setAssistLayerIndex] = useState(0);
+  const [assistPlacedCount, setAssistPlacedCount] = useState(0);
+  const [assistOpacity, setAssistOpacity] = useState(70);
 
   const mode = useMemo(() => getMode(selectedMode), [selectedMode]);
   const isRunning = runState === "running";
@@ -151,6 +155,18 @@ export default function HomeScreen() {
   const progress = Math.min(100, Math.round((actionCount / Math.max(currentLimit, 1)) * 100));
   const livePhases = selectedMode === "build" ? ["Checking allotted land", "Selecting block", "Placing block", "Verifying layer"] : ["Checking plot", "Harvesting row", "Replanting row", "Returning to anchor"];
   const currentPhase = isRunning ? livePhases[actionCount % livePhases.length] : phase;
+  const blueprintLayers = useMemo(() => {
+    if (!blueprint) return [];
+    return [...new Set(blueprint.blocks.map((block) => block.y))].sort((a, b) => a - b);
+  }, [blueprint]);
+  const currentAssistLayer = blueprintLayers[assistLayerIndex] ?? 0;
+  const currentLayerBlocks = useMemo(
+    () => blueprint?.blocks.filter((block) => block.y === currentAssistLayer) ?? [],
+    [blueprint, currentAssistLayer],
+  );
+  const assistOrder = useMemo(() => (blueprint ? buildOrder(blueprint) : []), [blueprint]);
+  const nextAssistBlock = assistOrder[assistPlacedCount] ?? null;
+  const assistProgress = assistOrder.length ? Math.round((assistPlacedCount / assistOrder.length) * 100) : 0;
 
   useEffect(() => {
     void AsyncStorage.multiGet(["blockmate:intro-seen", "blockmate:calibrated"]).then((entries) => {
@@ -240,6 +256,8 @@ export default function HomeScreen() {
       const nextBlueprint = analyzeBlueprint(JSON.parse(text), asset.name.replace(/\.json$/i, ""));
       setBlueprint(nextBlueprint);
       setBuildStage("land");
+      setAssistLayerIndex(0);
+      setAssistPlacedCount(0);
       setToast(`${nextBlueprint.name} analyzed. Confirm the allotted land next.`);
     } catch {
       setToast("This file could not be analyzed. Use the JSON blueprint format shown in the builder.");
@@ -255,6 +273,19 @@ export default function HomeScreen() {
     if (!blueprint) return;
     setBuildStage("ready");
     setToast("Allotted land recorded. The build order is ready for confirmation.");
+  }
+
+  function openBuildAssist() {
+    if (!blueprint) return;
+    setAssistLayerIndex(0);
+    setAssistPlacedCount(0);
+    setBuildAssistVisible(true);
+  }
+
+  function markAssistBlockPlaced() {
+    if (!nextAssistBlock) return;
+    setAssistPlacedCount((value) => Math.min(value + 1, assistOrder.length));
+    setToast("Block marked placed. The guide advanced without sending a Minecraft action.");
   }
 
   function completeCalibration() {
@@ -439,6 +470,12 @@ export default function HomeScreen() {
                 <Text style={styles.blueprintButtonText}>{blueprint ? "REVIEW BUILD PLAN" : "CHOOSE BUILDING FILE"}</Text>
                 <Icon name="arrow-forward" color={COLORS.background} size={17} />
               </Pressable>
+              {blueprint && buildStage === "ready" ? (
+                <Pressable accessibilityRole="button" onPress={openBuildAssist} style={({ pressed }) => [styles.guideButton, { opacity: pressed ? 0.8 : 1 }]}>
+                  <Icon name="layers-outline" color={COLORS.sand} size={17} />
+                  <Text style={styles.guideButtonText}>OPEN SIDE-BY-SIDE GUIDE</Text>
+                </Pressable>
+              ) : null}
             </View>
           ) : null}
 
@@ -554,12 +591,49 @@ export default function HomeScreen() {
               ) : (
                 <>
                   <View style={styles.landBox}><Icon name="checkmark-circle" color={COLORS.moss} size={20} /><View style={styles.infoText}><Text style={styles.infoTitle}>Allotted land confirmed</Text><Text style={styles.infoBody}>The build order is ready. BlockMate will ask for final confirmation before starting.</Text></View></View>
+                  <Pressable accessibilityRole="button" onPress={openBuildAssist} style={styles.sheetSecondaryButton}><Text style={styles.sheetSecondaryText}>OPEN SIDE-BY-SIDE GUIDE</Text></Pressable>
                   <Pressable accessibilityRole="button" onPress={() => setBuildingVisible(false)} style={styles.sheetPrimaryButton}><Text style={styles.sheetPrimaryText}>PREPARE BUILD</Text><Icon name="checkmark" color={COLORS.background} size={18} /></Pressable>
                 </>
               )}
               <Pressable accessibilityRole="button" onPress={() => void chooseBlueprint()} style={styles.sheetSecondaryButton}><Text style={styles.sheetSecondaryText}>CHOOSE A DIFFERENT FILE</Text></Pressable>
             </>
           ) : null}
+        </Sheet>
+      ) : null}
+
+      {buildAssistVisible && blueprint ? (
+        <Sheet onClose={() => setBuildAssistVisible(false)}>
+          <View style={styles.sheetHandle} />
+          <View style={styles.sheetTitleRow}>
+            <View><Text style={styles.sheetEyebrow}>BUILD ASSIST / MANUAL</Text><Text style={styles.sheetTitle}>Side-by-side guide</Text></View>
+            <Pressable onPress={() => setBuildAssistVisible(false)}><Icon name="close" color={COLORS.muted} size={24} /></Pressable>
+          </View>
+          <View style={styles.guideStatusRow}>
+            <View style={styles.guideStatusBadge}><Icon name="phone-portrait-outline" color={COLORS.sand} size={15} /><Text style={styles.guideStatusText}>KEEP MINECRAFT BESIDE THIS GUIDE</Text></View>
+            <Text style={styles.guidePercent}>{assistProgress}%</Text>
+          </View>
+          <Text style={styles.sheetBody}>This is a manual companion view. It never places a block or changes Minecraft. Use the layer and next-block prompts while Minecraft is visible beside or behind BlockMate.</Text>
+          <View style={styles.guidePreview}>
+            <View style={styles.guidePreviewHeader}><Text style={styles.formatBoxTitle}>LAYER {assistLayerIndex + 1} / {Math.max(blueprintLayers.length, 1)}</Text><Text style={styles.guidePreviewMeta}>{currentLayerBlocks.length} blocks</Text></View>
+            <View style={styles.guideGrid}>
+              {Array.from({ length: 25 }, (_, index) => {
+                const filled = index < Math.min(currentLayerBlocks.length, 25);
+                return <View key={index} style={[styles.guideGridCell, filled && styles.guideGridCellFilled, { opacity: filled ? assistOpacity / 100 : 1 }]} />;
+              })}
+            </View>
+            <Text style={styles.guidePreviewHint}>Schematic preview · {blueprint.dimensions.width}W × {blueprint.dimensions.length}L footprint</Text>
+          </View>
+          <View style={styles.layerControls}>
+            <Pressable accessibilityRole="button" disabled={assistLayerIndex === 0} onPress={() => setAssistLayerIndex((value) => Math.max(0, value - 1))} style={[styles.layerButton, assistLayerIndex === 0 && styles.buttonDisabled]}><Icon name="chevron-back" color={COLORS.text} size={18} /></Pressable>
+            <View style={styles.layerReadout}><Text style={styles.telemetryLabel}>CURRENT Y</Text><Text style={styles.layerValue}>{currentAssistLayer}</Text></View>
+            <Pressable accessibilityRole="button" disabled={assistLayerIndex >= blueprintLayers.length - 1} onPress={() => setAssistLayerIndex((value) => Math.min(blueprintLayers.length - 1, value + 1))} style={[styles.layerButton, assistLayerIndex >= blueprintLayers.length - 1 && styles.buttonDisabled]}><Icon name="chevron-forward" color={COLORS.text} size={18} /></Pressable>
+          </View>
+          <View style={styles.nextBlockCard}>
+            <View style={[styles.nextBlockSwatch, { backgroundColor: nextAssistBlock ? COLORS.sand : COLORS.moss }]} />
+            <View style={styles.infoText}><Text style={styles.telemetryLabel}>NEXT BLOCK</Text><Text style={styles.nextBlockName}>{nextAssistBlock ? nextAssistBlock.block.replace("minecraft:", "") : "Layer complete"}</Text><Text style={styles.infoBody}>{nextAssistBlock ? `Relative position  X ${nextAssistBlock.x} · Y ${nextAssistBlock.y} · Z ${nextAssistBlock.z}` : "All blueprint blocks are marked placed."}</Text></View>
+          </View>
+          <View style={styles.guideSliderRow}><Text style={styles.telemetryLabel}>OVERLAY OPACITY</Text><View style={styles.opacityRail}>{[30, 50, 70, 90].map((value) => <Pressable key={value} accessibilityRole="button" onPress={() => setAssistOpacity(value)} style={[styles.opacityStop, value === assistOpacity && styles.opacityStopActive]}><Text style={styles.opacityStopText}>{value}</Text></Pressable>)}</View></View>
+          <View style={styles.guideActions}><Pressable accessibilityRole="button" onPress={markAssistBlockPlaced} disabled={!nextAssistBlock} style={[styles.sheetPrimaryButton, !nextAssistBlock && styles.buttonDisabled, styles.guideActionPrimary]}><Text style={styles.sheetPrimaryText}>MARK BLOCK PLACED</Text><Icon name="checkmark" color={COLORS.background} size={18} /></Pressable><Pressable accessibilityRole="button" onPress={() => setAssistPlacedCount(0)} style={styles.sheetSecondaryButton}><Text style={styles.sheetSecondaryText}>RESET PROGRESS</Text></Pressable></View>
         </Sheet>
       ) : null}
 
@@ -685,6 +759,8 @@ const styles = StyleSheet.create({
   blueprintDimensions: { color: COLORS.sand, fontSize: 11, fontWeight: "800" },
   blueprintButton: { minHeight: 42, borderRadius: 12, backgroundColor: COLORS.sand, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
   blueprintButtonText: { color: COLORS.background, fontSize: 10, fontWeight: "900", letterSpacing: 0.8 },
+  guideButton: { minHeight: 40, borderRadius: 12, borderWidth: 1, borderColor: `${COLORS.sand}66`, backgroundColor: `${COLORS.sand}12`, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
+  guideButtonText: { color: COLORS.sand, fontSize: 10, fontWeight: "900", letterSpacing: 0.8 },
   settingRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingTop: 3 },
   settingLabel: { color: COLORS.text, fontSize: 11, fontWeight: "900", letterSpacing: 1.1 },
   settingHint: { color: COLORS.muted, fontSize: 10, marginTop: 4 },
@@ -762,4 +838,29 @@ const styles = StyleSheet.create({
   confirmBoxValue: { color: COLORS.moss, fontSize: 29, fontWeight: "900", marginTop: 4 },
   confirmBoxUnit: { color: COLORS.muted, fontSize: 12, fontWeight: "800" },
   confirmBoxHint: { color: COLORS.muted, fontSize: 10, marginTop: 2 },
+  guideStatusRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  guideStatusBadge: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: `${COLORS.sand}12`, borderRadius: 99, paddingHorizontal: 9, paddingVertical: 7 },
+  guideStatusText: { color: COLORS.sand, fontSize: 9, fontWeight: "900", letterSpacing: 0.7 },
+  guidePercent: { color: COLORS.moss, fontSize: 20, fontWeight: "900" },
+  guidePreview: { backgroundColor: COLORS.background, borderRadius: 16, borderWidth: 1, borderColor: COLORS.line, padding: 12, gap: 10 },
+  guidePreviewHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  guidePreviewMeta: { color: COLORS.muted, fontSize: 10, fontWeight: "800" },
+  guideGrid: { flexDirection: "row", flexWrap: "wrap", gap: 4, width: 190, alignSelf: "center" },
+  guideGridCell: { width: 32, height: 22, borderRadius: 5, backgroundColor: COLORS.panelSoft, borderWidth: 1, borderColor: COLORS.line },
+  guideGridCellFilled: { backgroundColor: COLORS.sand, borderColor: COLORS.sand },
+  guidePreviewHint: { color: COLORS.muted, fontSize: 10, lineHeight: 14, textAlign: "center" },
+  layerControls: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  layerButton: { width: 42, height: 42, borderRadius: 12, backgroundColor: COLORS.panelSoft, alignItems: "center", justifyContent: "center" },
+  layerReadout: { alignItems: "center" },
+  layerValue: { color: COLORS.sand, fontSize: 22, fontWeight: "900", marginTop: 2 },
+  nextBlockCard: { flexDirection: "row", alignItems: "center", gap: 11, backgroundColor: `${COLORS.moss}0D`, borderRadius: 14, borderWidth: 1, borderColor: `${COLORS.moss}44`, padding: 12 },
+  nextBlockSwatch: { width: 24, height: 24, borderRadius: 7 },
+  nextBlockName: { color: COLORS.text, fontSize: 15, fontWeight: "900", marginTop: 2 },
+  guideSliderRow: { gap: 8 },
+  opacityRail: { flexDirection: "row", gap: 7 },
+  opacityStop: { flex: 1, backgroundColor: COLORS.panelSoft, borderRadius: 8, paddingVertical: 8, alignItems: "center" },
+  opacityStopActive: { backgroundColor: `${COLORS.sand}33`, borderWidth: 1, borderColor: COLORS.sand },
+  opacityStopText: { color: COLORS.muted, fontSize: 10, fontWeight: "900" },
+  guideActions: { gap: 4 },
+  guideActionPrimary: { marginTop: 0 },
 });

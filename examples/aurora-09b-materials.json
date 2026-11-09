@@ -1,0 +1,26 @@
+{
+  "name": "AURORA-09B Pocket God Cannon Mk-I",
+  "totalBlocks": 2515,
+  "materials": {
+    "minecraft:deepslate_bricks": 1720,
+    "minecraft:obsidian": 408,
+    "minecraft:polished_deepslate": 177,
+    "minecraft:glass": 54,
+    "minecraft:iron_block": 39,
+    "minecraft:water": 28,
+    "minecraft:copper_block": 25,
+    "minecraft:redstone_wire": 15,
+    "minecraft:redstone_lamp": 14,
+    "minecraft:repeater": 9,
+    "minecraft:lever": 7,
+    "minecraft:tnt": 6,
+    "minecraft:iron_bars": 4,
+    "minecraft:target": 3,
+    "minecraft:blue_wool": 1,
+    "minecraft:button": 1,
+    "minecraft:iron_door": 1,
+    "minecraft:lime_wool": 1,
+    "minecraft:red_wool": 1,
+    "minecraft:yellow_wool": 1
+  }
+}

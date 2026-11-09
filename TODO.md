@@ -4,6 +4,7 @@
 - [in progress] The app provides a mode hub for farming and replanting, tree chopping, straight-tunnel mining, fishing, repeated combat, and blueprint building, with implementation status clearly shown for each mode.
 - [in progress] The prototype presents prepared screens and controls for chopping, mining, fishing, and combat, clearly marked as planned or not yet active.
 - [in progress] Building mode accepts a JSON building file, analyzes dimensions and required materials, asks the user to confirm the allotted land, and prepares a layer-by-layer block order before final confirmation.
+- [complete] After land confirmation, the manual Build Assist view shows the current layer, a schematic footprint preview, next-block coordinates, layer navigation, opacity presets, and placed-block progress; it never sends a Minecraft action.
 - [ ] Add Bedrock `.mcstructure` import after the JSON blueprint workflow is verified with a real file.
 
 ## 2. Farming prototype run
