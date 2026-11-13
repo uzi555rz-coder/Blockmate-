@@ -1,7 +1,4 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
-import * as DocumentPicker from "expo-document-picker";
-import * as FileSystem from "expo-file-system/legacy";
 import { useEffect, useMemo, useState } from "react";
 import {
   Image,
@@ -125,7 +122,7 @@ export default function HomeScreen() {
   const [selectedMode, setSelectedMode] = useState<AutomationModeId>("farm");
   const [runState, setRunState] = useState<RunState>("idle");
   const [calibrated, setCalibrated] = useState(false);
-  const [introVisible, setIntroVisible] = useState(false);
+  const [introVisible, setIntroVisible] = useState(true);
   const [calibrationVisible, setCalibrationVisible] = useState(false);
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [buildingVisible, setBuildingVisible] = useState(false);
@@ -166,19 +163,6 @@ export default function HomeScreen() {
   const assistProgress = assistOrder.length ? Math.round((assistPlacedCount / assistOrder.length) * 100) : 0;
 
   useEffect(() => {
-    void AsyncStorage.multiGet(["blockmate:intro-seen", "blockmate:calibrated"]).then((entries) => {
-      const introSeen = entries.find(([key]) => key === "blockmate:intro-seen")?.[1];
-      const savedCalibration = entries.find(([key]) => key === "blockmate:calibrated")?.[1];
-      if (savedCalibration === "true") {
-        setCalibrated(true);
-        setRunState("calibrated");
-        setPhase("Farm anchor ready");
-      }
-      if (introSeen !== "true") setIntroVisible(true);
-    });
-  }, []);
-
-  useEffect(() => {
     if (!isRunning) return;
     const timer = setInterval(() => setActionCount((value) => value + 1), 850);
     return () => clearInterval(timer);
@@ -198,7 +182,6 @@ export default function HomeScreen() {
 
   function dismissIntro() {
     setIntroVisible(false);
-    void AsyncStorage.setItem("blockmate:intro-seen", "true");
   }
 
   function beginCalibration() {
@@ -208,6 +191,7 @@ export default function HomeScreen() {
   }
 
   async function chooseBlueprint() {
+    const DocumentPicker = await import("expo-document-picker");
     const result = await DocumentPicker.getDocumentAsync({
       type: "application/json",
       copyToCacheDirectory: true,
@@ -218,7 +202,7 @@ export default function HomeScreen() {
       const asset = result.assets[0];
       const text = Platform.OS === "web"
         ? await fetch(asset.uri).then((response) => response.text())
-        : await FileSystem.readAsStringAsync(asset.uri);
+        : await (await import("expo-file-system/legacy")).readAsStringAsync(asset.uri);
       const nextBlueprint = analyzeBlueprint(JSON.parse(text), asset.name.replace(/\.json$/i, ""));
       setBlueprint(nextBlueprint);
       setBuildStage("land");
@@ -260,7 +244,6 @@ export default function HomeScreen() {
     setPhase("Farm anchor ready");
     setToast("Calibration saved. Safety checks are armed.");
     setCalibrationVisible(false);
-    void AsyncStorage.setItem("blockmate:calibrated", "true");
   }
 
   function startRun() {
